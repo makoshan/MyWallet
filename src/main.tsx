@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -12,7 +12,78 @@ const networks = [
   { name: "TRON Testnet", status: "后续接入" },
 ];
 
+type PasskeySupport = "checking" | "supported" | "unsupported";
+
+function getPasskeySupportMessage(status: PasskeySupport) {
+  if (status === "checking") {
+    return "正在检查当前浏览器是否支持 Passkey。";
+  }
+
+  if (status === "supported") {
+    return "当前浏览器支持 Passkey。下一步会接入真实创建流程。";
+  }
+
+  return "当前浏览器暂不支持 Passkey，请换 Chrome、Edge 或 Safari 再试。";
+}
+
 function App() {
+  const [passkeySupport, setPasskeySupport] =
+    useState<PasskeySupport>("checking");
+  const [passkeyMessage, setPasskeyMessage] = useState(
+    "打开页面后会自动检测 Passkey 支持情况。",
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkPasskeySupport() {
+      if (!window.PublicKeyCredential) {
+        if (!cancelled) {
+          setPasskeySupport("unsupported");
+          setPasskeyMessage(getPasskeySupportMessage("unsupported"));
+        }
+        return;
+      }
+
+      try {
+        const isPlatformAuthenticatorAvailable =
+          await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+
+        if (!cancelled) {
+          const nextStatus = isPlatformAuthenticatorAvailable
+            ? "supported"
+            : "unsupported";
+          setPasskeySupport(nextStatus);
+          setPasskeyMessage(getPasskeySupportMessage(nextStatus));
+        }
+      } catch {
+        if (!cancelled) {
+          setPasskeySupport("unsupported");
+          setPasskeyMessage(
+            "Passkey 支持检测失败，请确认当前页面在 HTTPS 或 localhost 环境下打开。",
+          );
+        }
+      }
+    }
+
+    void checkPasskeySupport();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function handleCreatePasskeyPreview() {
+    if (passkeySupport !== "supported") {
+      setPasskeyMessage(getPasskeySupportMessage("unsupported"));
+      return;
+    }
+
+    setPasskeyMessage(
+      "检测通过。这一步只展示创建入口，真实 Passkey 创建会在后续步骤接入。",
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="钱包导航">
@@ -59,7 +130,11 @@ function App() {
               地址生成或测试网广播。
             </p>
           </div>
-          <button className="primary-button" type="button">
+          <button
+            className="primary-button"
+            onClick={handleCreatePasskeyPreview}
+            type="button"
+          >
             Create Passkey
           </button>
         </header>
@@ -84,6 +159,39 @@ function App() {
               <button type="button">Portfolio</button>
               <button type="button">Settings</button>
             </div>
+          </article>
+
+          <article className="panel passkey-panel">
+            <div className="panel-header">
+              <h2>Create Passkey</h2>
+              <span className={`pill ${passkeySupport}`}>
+                {passkeySupport === "checking"
+                  ? "Checking"
+                  : passkeySupport === "supported"
+                    ? "Supported"
+                    : "Unsupported"}
+              </span>
+            </div>
+            <div className="passkey-visual" aria-hidden="true">
+              <span>⌁</span>
+            </div>
+            <p className="muted-text">
+              Passkey 会用系统生物识别或设备密码来保护钱包。当前步骤只做入口和支持检测，不创建钱包、不生成地址。
+            </p>
+            <div
+              className={`support-message ${passkeySupport}`}
+              role="status"
+            >
+              {passkeyMessage}
+            </div>
+            <button
+              className="secondary-button"
+              disabled={passkeySupport !== "supported"}
+              onClick={handleCreatePasskeyPreview}
+              type="button"
+            >
+              Check and Continue
+            </button>
           </article>
 
           <article className="panel wide">
