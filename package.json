@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@consenlabs/tcx-wasm": "^0.9.1",
+    "@types/qrcode": "^1.5.6",
+    "qrcode": "^1.5.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },

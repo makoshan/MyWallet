@@ -4,6 +4,7 @@ import initTokenCoreWasm, {
   derive_accounts,
 } from "@consenlabs/tcx-wasm";
 import tokenCoreWasmUrl from "@consenlabs/tcx-wasm/tcx_wasm_bg.wasm?url";
+import QRCode from "qrcode";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -232,6 +233,7 @@ function App() {
     "点击 Create Passkey 后，会创建加密钱包并生成 Ethereum Sepolia 地址。",
   );
   const [ethereumAddress, setEthereumAddress] = useState("");
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
 
   const networks = getNetworks(ethereumAddress);
@@ -322,6 +324,36 @@ function App() {
     );
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function createQrCode() {
+      if (!ethereumAddress) {
+        setQrCodeUrl("");
+        return;
+      }
+
+      const nextQrCodeUrl = await QRCode.toDataURL(ethereumAddress, {
+        color: {
+          dark: "#111d4a",
+          light: "#ffffff",
+        },
+        margin: 2,
+        width: 240,
+      });
+
+      if (!cancelled) {
+        setQrCodeUrl(nextQrCodeUrl);
+      }
+    }
+
+    void createQrCode();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ethereumAddress]);
+
   async function handleCreatePasskeyWallet() {
     if (passkeySupport !== "supported") {
       setPasskeyMessage(getPasskeySupportMessage("unsupported"));
@@ -393,8 +425,12 @@ function App() {
       return;
     }
 
-    await navigator.clipboard.writeText(ethereumAddress);
-    setCopyMessage("地址已复制。");
+    try {
+      await navigator.clipboard.writeText(ethereumAddress);
+      setCopyMessage("地址已复制。");
+    } catch {
+      setCopyMessage("复制失败，请手动选择地址。");
+    }
   }
 
   return (
@@ -603,14 +639,40 @@ function App() {
           <article className="panel">
             <div className="panel-header">
               <h2>Deposit Funds</h2>
-              <span className="pill">预览</span>
+              <span className={`pill ${ethereumAddress ? "created" : ""}`}>
+                {ethereumAddress ? "Ready" : "Waiting"}
+              </span>
             </div>
-            <div className="qr-placeholder" aria-hidden="true">
-              QR
+            {qrCodeUrl ? (
+              <img
+                alt="Ethereum Sepolia 收款二维码"
+                className="qr-code"
+                src={qrCodeUrl}
+              />
+            ) : (
+              <div className="qr-placeholder" aria-hidden="true">
+                QR
+              </div>
+            )}
+            <p className="muted-text">扫描二维码或复制地址，向钱包转入测试币。</p>
+            <div className="deposit-address">
+              <span>{ethereumAddress || "创建钱包后显示收款地址"}</span>
+              <button
+                disabled={!ethereumAddress}
+                onClick={copyEthereumAddress}
+                type="button"
+              >
+                Copy
+              </button>
             </div>
-            <p className="muted-text">
-              第 6 步会在这里显示当前网络的真实收款二维码和复制地址。
-            </p>
+            <div className="deposit-warning" role="note">
+              只发送 Ethereum Sepolia 测试网 ETH 到这个地址。发送其他网络或资产可能无法找回。
+            </div>
+            {copyMessage ? (
+              <div className="copy-message" role="status">
+                {copyMessage}
+              </div>
+            ) : null}
           </article>
         </section>
       </main>
