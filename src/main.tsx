@@ -1,21 +1,57 @@
 import { StrictMode, useEffect, useState } from "react";
-import initTokenCoreWasm from "@consenlabs/tcx-wasm";
+import initTokenCoreWasm, {
+  create_keystore,
+  derive_accounts,
+} from "@consenlabs/tcx-wasm";
 import tokenCoreWasmUrl from "@consenlabs/tcx-wasm/tcx_wasm_bg.wasm?url";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 const navItems = ["Dashboard", "Portfolio", "Deposit Funds", "Settings"];
+const walletStorageKey = "mywallet.passkeyWallet.v1";
 
-const networks = [
-  { name: "Ethereum Sepolia", status: "后续接入" },
-  { name: "BSC Testnet", status: "后续接入" },
-  { name: "Bitcoin Testnet", status: "后续接入" },
-  { name: "Solana Devnet", status: "后续接入" },
-  { name: "TRON Testnet", status: "后续接入" },
-];
+function getNetworks(ethereumAddress: string) {
+  return [
+    {
+      name: "Ethereum Sepolia",
+      status: ethereumAddress ? "地址已生成" : "等待创建",
+      badge: ethereumAddress ? "Connected" : "Not connected",
+    },
+    { name: "BSC Testnet", status: "后续接入", badge: "Not connected" },
+    { name: "Bitcoin Testnet", status: "后续接入", badge: "Not connected" },
+    { name: "Solana Devnet", status: "后续接入", badge: "Not connected" },
+    { name: "TRON Testnet", status: "后续接入", badge: "Not connected" },
+  ];
+}
 
 type PasskeySupport = "checking" | "supported" | "unsupported";
 type WasmStatus = "loading" | "ready" | "failed";
+type WalletStatus = "idle" | "creating" | "created" | "failed";
+
+type StoredWallet = {
+  version: 1;
+  keystoreJson: string;
+  credentialId: string;
+  credentialRawId: string;
+  userId: string;
+  rpId: string;
+  prfSaltHex: string;
+  ethereumSepoliaAddress: string;
+  createdAt: string;
+};
+
+type DerivedAccount = {
+  address?: string;
+};
+
+type PrfExtensionResults = {
+  prf?: {
+    enabled?: boolean;
+    results?: {
+      first?: ArrayBuffer;
+    };
+  };
+};
 
 function getPasskeySupportMessage(status: PasskeySupport) {
   if (status === "checking") {
@@ -23,10 +59,162 @@ function getPasskeySupportMessage(status: PasskeySupport) {
   }
 
   if (status === "supported") {
-    return "当前浏览器支持 Passkey。下一步会接入真实创建流程。";
+    return "当前浏览器支持 Passkey，可以继续创建测试钱包。";
   }
 
   return "当前浏览器暂不支持 Passkey，请换 Chrome、Edge 或 Safari 再试。";
+}
+
+function getRandomBytes(length: number): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(new ArrayBuffer(length));
+  crypto.getRandomValues(bytes);
+  return bytes;
+}
+
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+function arrayBufferToBase64Url(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  let value = "";
+
+  bytes.forEach((byte) => {
+    value += String.fromCharCode(byte);
+  });
+
+  return btoa(value).replaceAll("+", "-").replaceAll("/", "_").replaceAll(
+    "=",
+    "",
+  );
+}
+
+function getRpId() {
+  return window.location.hostname || "localhost";
+}
+
+function getPrfResult(credential: PublicKeyCredential) {
+  const extensionResults =
+    credential.getClientExtensionResults() as PrfExtensionResults;
+  return extensionResults.prf?.results?.first;
+}
+
+async function requestPasskeyPrfKey(
+  credentialRawId: ArrayBuffer,
+  prfSalt: Uint8Array,
+) {
+  const assertion = (await navigator.credentials.get({
+    publicKey: {
+      allowCredentials: [
+        {
+          id: credentialRawId,
+          type: "public-key",
+        },
+      ],
+      challenge: getRandomBytes(32),
+      extensions: {
+        prf: {
+          eval: {
+            first: prfSalt,
+          },
+        },
+      } as AuthenticationExtensionsClientInputs,
+      timeout: 60_000,
+      userVerification: "required",
+    },
+  })) as PublicKeyCredential | null;
+
+  if (!assertion) {
+    throw new Error("Passkey 解锁被取消。");
+  }
+
+  const prfResult = getPrfResult(assertion);
+
+  if (!prfResult) {
+    throw new Error("当前浏览器或设备没有返回 Passkey PRF 结果。");
+  }
+
+  return new Uint8Array(prfResult);
+}
+
+async function createPasskeyCredential(userIdBytes: Uint8Array<ArrayBuffer>) {
+  const credential = (await navigator.credentials.create({
+    publicKey: {
+      attestation: "none",
+      authenticatorSelection: {
+        authenticatorAttachment: "platform",
+        residentKey: "preferred",
+        userVerification: "required",
+      },
+      challenge: getRandomBytes(32),
+      pubKeyCredParams: [
+        { alg: -7, type: "public-key" },
+        { alg: -257, type: "public-key" },
+      ],
+      rp: {
+        name: "MyWallet",
+      },
+      timeout: 60_000,
+      user: {
+        displayName: "MyWallet Demo User",
+        id: userIdBytes,
+        name: "mywallet-demo-user",
+      },
+    },
+  })) as PublicKeyCredential | null;
+
+  if (!credential) {
+    throw new Error("Passkey 创建被取消。");
+  }
+
+  return credential;
+}
+
+function deriveEthereumSepoliaAddress(keystoreJson: string, prfKeyHex: string) {
+  const accounts = JSON.parse(
+    derive_accounts(
+      JSON.stringify({
+        derivations: [
+          {
+            chain: "ETHEREUM",
+            chainId: "11155111",
+            derivationPath: "m/44'/60'/0'/0/0",
+            network: "TESTNET",
+          },
+        ],
+        key: prfKeyHex,
+        keystoreJson,
+      }),
+    ),
+  ) as DerivedAccount[];
+
+  const address = accounts[0]?.address;
+
+  if (!address) {
+    throw new Error("Token Core 没有返回 Ethereum Sepolia 地址。");
+  }
+
+  return address;
+}
+
+function loadStoredWallet() {
+  const rawWallet = localStorage.getItem(walletStorageKey);
+
+  if (!rawWallet) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawWallet) as StoredWallet;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredWallet(wallet: StoredWallet) {
+  localStorage.setItem(walletStorageKey, JSON.stringify(wallet));
 }
 
 function App() {
@@ -39,6 +227,14 @@ function App() {
   const [wasmMessage, setWasmMessage] = useState(
     "正在加载 Token Core WASM 模块。",
   );
+  const [walletStatus, setWalletStatus] = useState<WalletStatus>("idle");
+  const [walletMessage, setWalletMessage] = useState(
+    "点击 Create Passkey 后，会创建加密钱包并生成 Ethereum Sepolia 地址。",
+  );
+  const [ethereumAddress, setEthereumAddress] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
+
+  const networks = getNetworks(ethereumAddress);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +286,7 @@ function App() {
         if (!cancelled) {
           setWasmStatus("ready");
           setWasmMessage(
-            "Token Core WASM 已初始化。当前步骤只验证加载能力，不创建钱包、不签名。",
+            "Token Core WASM 已初始化，可以用于创建加密钱包和派生地址。",
           );
         }
       } catch (error) {
@@ -112,15 +308,93 @@ function App() {
     };
   }, []);
 
-  function handleCreatePasskeyPreview() {
+  useEffect(() => {
+    const storedWallet = loadStoredWallet();
+
+    if (!storedWallet?.ethereumSepoliaAddress) {
+      return;
+    }
+
+    setEthereumAddress(storedWallet.ethereumSepoliaAddress);
+    setWalletStatus("created");
+    setWalletMessage(
+      "已从本机浏览器读取加密钱包记录。页面只展示地址，不展示助记词或私钥。",
+    );
+  }, []);
+
+  async function handleCreatePasskeyWallet() {
     if (passkeySupport !== "supported") {
       setPasskeyMessage(getPasskeySupportMessage("unsupported"));
       return;
     }
 
-    setPasskeyMessage(
-      "检测通过。这一步只展示创建入口，真实 Passkey 创建会在后续步骤接入。",
-    );
+    if (wasmStatus !== "ready") {
+      setWalletStatus("failed");
+      setWalletMessage("Token Core WASM 还没有初始化完成，请稍后再试。");
+      return;
+    }
+
+    try {
+      setWalletStatus("creating");
+      setCopyMessage("");
+      setWalletMessage("正在创建 Passkey，请按浏览器提示完成系统验证。");
+
+      const userIdBytes = getRandomBytes(16);
+      const prfSalt = getRandomBytes(32);
+      const credential = await createPasskeyCredential(userIdBytes);
+      const prfKeyBytes = await requestPasskeyPrfKey(
+        credential.rawId,
+        prfSalt,
+      );
+      const prfKeyHex = bytesToHex(prfKeyBytes);
+      const rpId = getRpId();
+      const userId = arrayBufferToBase64Url(userIdBytes.buffer);
+
+      const keystoreJson = create_keystore(
+        JSON.stringify({
+          credentialId: credential.id,
+          network: "TESTNET",
+          prfKey: prfKeyHex,
+          rpId,
+          userId,
+        }),
+      );
+      const address = deriveEthereumSepoliaAddress(keystoreJson, prfKeyHex);
+
+      saveStoredWallet({
+        createdAt: new Date().toISOString(),
+        credentialId: credential.id,
+        credentialRawId: arrayBufferToBase64Url(credential.rawId),
+        ethereumSepoliaAddress: address,
+        keystoreJson,
+        prfSaltHex: bytesToHex(prfSalt),
+        rpId,
+        userId,
+        version: 1,
+      });
+
+      setEthereumAddress(address);
+      setWalletStatus("created");
+      setWalletMessage(
+        "Ethereum Sepolia 地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
+      );
+    } catch (error) {
+      setWalletStatus("failed");
+      setWalletMessage(
+        error instanceof Error
+          ? error.message
+          : "创建钱包失败，请重试或换支持 Passkey PRF 的浏览器。",
+      );
+    }
+  }
+
+  async function copyEthereumAddress() {
+    if (!ethereumAddress) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(ethereumAddress);
+    setCopyMessage("地址已复制。");
   }
 
   return (
@@ -165,16 +439,17 @@ function App() {
             <p className="eyebrow">测试网 Demo</p>
             <h1>Passkey 多链钱包</h1>
             <p className="page-description">
-              第 4 步正在验证 Token Core WASM 初始化。现在还没有创建钱包、
-              地址生成、签名或测试网广播。
+              第 5 步接入 Passkey 创建和 Token Core 地址派生。当前只生成
+              Ethereum Sepolia 测试网地址，不展示助记词或私钥。
             </p>
           </div>
           <button
             className="primary-button"
-            onClick={handleCreatePasskeyPreview}
+            disabled={walletStatus === "creating"}
+            onClick={handleCreatePasskeyWallet}
             type="button"
           >
-            Create Passkey
+            {walletStatus === "creating" ? "Creating..." : "Create Passkey"}
           </button>
         </header>
 
@@ -183,7 +458,7 @@ function App() {
             <div className="panel-label">Total Portfolio Value</div>
             <div className="balance">$0.00</div>
             <p className="muted-text">
-              空资产状态正常。后续步骤会接入测试网地址和余额。
+              空资产状态正常。第 7 步会接入 Sepolia ETH 余额查询。
             </p>
           </article>
 
@@ -215,7 +490,7 @@ function App() {
               <span>⌁</span>
             </div>
             <p className="muted-text">
-              Passkey 会用系统生物识别或设备密码来保护钱包。当前步骤只做入口和支持检测，不创建钱包、不生成地址。
+              Passkey 会用系统生物识别或设备密码来保护钱包。创建后页面只保存加密钱包文件和公开地址。
             </p>
             <div
               className={`support-message ${passkeySupport}`}
@@ -225,11 +500,15 @@ function App() {
             </div>
             <button
               className="secondary-button"
-              disabled={passkeySupport !== "supported"}
-              onClick={handleCreatePasskeyPreview}
+              disabled={
+                passkeySupport !== "supported" ||
+                wasmStatus !== "ready" ||
+                walletStatus === "creating"
+              }
+              onClick={handleCreatePasskeyWallet}
               type="button"
             >
-              Check and Continue
+              {walletStatus === "created" ? "Create New Wallet" : "Create Wallet"}
             </button>
           </article>
 
@@ -256,6 +535,42 @@ function App() {
             </div>
           </article>
 
+          <article className="panel address-panel">
+            <div className="panel-header">
+              <h2>Ethereum Sepolia</h2>
+              <span className={`pill ${walletStatus}`}>
+                {walletStatus === "creating"
+                  ? "Creating"
+                  : walletStatus === "created"
+                    ? "Address Ready"
+                    : walletStatus === "failed"
+                      ? "Needs Retry"
+                      : "Not Created"}
+              </span>
+            </div>
+            <p className="muted-text">
+              这是公开收款地址，可以复制给自己用于测试网转入 Sepolia ETH。
+            </p>
+            <div className="address-box">
+              <span>{ethereumAddress || "创建钱包后显示 Ethereum Sepolia 地址"}</span>
+              <button
+                disabled={!ethereumAddress}
+                onClick={copyEthereumAddress}
+                type="button"
+              >
+                Copy
+              </button>
+            </div>
+            <div className={`support-message ${walletStatus}`} role="status">
+              {walletMessage}
+            </div>
+            {copyMessage ? (
+              <div className="copy-message" role="status">
+                {copyMessage}
+              </div>
+            ) : null}
+          </article>
+
           <article className="panel wide">
             <div className="panel-header">
               <h2>Test Networks</h2>
@@ -271,7 +586,15 @@ function App() {
                     <div className="network-name">{network.name}</div>
                     <div className="network-status">{network.status}</div>
                   </div>
-                  <span className="network-badge">Not connected</span>
+                  <span
+                    className={
+                      network.badge === "Connected"
+                        ? "network-badge connected"
+                        : "network-badge"
+                    }
+                  >
+                    {network.badge}
+                  </span>
                 </div>
               ))}
             </div>
@@ -286,7 +609,7 @@ function App() {
               QR
             </div>
             <p className="muted-text">
-              后续会在这里显示当前网络的收款二维码和复制地址。
+              第 6 步会在这里显示当前网络的真实收款二维码和复制地址。
             </p>
           </article>
         </section>
