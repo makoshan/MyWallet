@@ -4,6 +4,12 @@ import initTokenCoreWasm, {
   derive_accounts,
 } from "@consenlabs/tcx-wasm";
 import tokenCoreWasmUrl from "@consenlabs/tcx-wasm/tcx_wasm_bg.wasm?url";
+import {
+  ExternalLink,
+  Fingerprint,
+  LockKeyhole,
+  ShieldCheck,
+} from "lucide-react";
 import QRCode from "qrcode";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
@@ -60,7 +66,7 @@ function getPasskeySupportMessage(status: PasskeySupport) {
   }
 
   if (status === "supported") {
-    return "当前浏览器支持 Passkey，可以继续创建测试钱包。";
+    return "当前浏览器具备基础 Passkey 能力。创建钱包时还会继续检查 PRF 加密能力。";
   }
 
   return "当前浏览器暂不支持 Passkey，请换 Chrome、Edge 或 Safari 再试。";
@@ -92,8 +98,37 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer) {
   );
 }
 
+function base64UrlToArrayBuffer(value: string) {
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes.buffer;
+}
+
+function hexToBytes(value: string) {
+  const bytes = new Uint8Array(new ArrayBuffer(value.length / 2));
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+  }
+
+  return bytes;
+}
+
 function getRpId() {
   return window.location.hostname || "localhost";
+}
+
+function getPrfEnabled(credential: PublicKeyCredential) {
+  const extensionResults =
+    credential.getClientExtensionResults() as PrfExtensionResults;
+  return extensionResults.prf?.enabled === true;
 }
 
 function getPrfResult(credential: PublicKeyCredential) {
@@ -154,6 +189,9 @@ async function createPasskeyCredential(userIdBytes: Uint8Array<ArrayBuffer>) {
         { alg: -7, type: "public-key" },
         { alg: -257, type: "public-key" },
       ],
+      extensions: {
+        prf: {},
+      } as AuthenticationExtensionsClientInputs,
       rp: {
         name: "MyWallet",
       },
@@ -168,6 +206,12 @@ async function createPasskeyCredential(userIdBytes: Uint8Array<ArrayBuffer>) {
 
   if (!credential) {
     throw new Error("Passkey 创建被取消。");
+  }
+
+  if (!getPrfEnabled(credential)) {
+    throw new Error(
+      "Passkey 已创建，但当前浏览器或设备没有启用 PRF，加密钱包无法继续创建。请换最新版 Chrome 或 Edge 再试。",
+    );
   }
 
   return credential;
@@ -226,12 +270,14 @@ function App() {
   );
   const [wasmStatus, setWasmStatus] = useState<WasmStatus>("loading");
   const [wasmMessage, setWasmMessage] = useState(
-    "正在加载 Token Core WASM 模块。",
+    "正在准备安全钱包模块。",
   );
   const [walletStatus, setWalletStatus] = useState<WalletStatus>("idle");
   const [walletMessage, setWalletMessage] = useState(
     "点击 Create Passkey 后，会创建加密钱包并生成 Ethereum Sepolia 地址。",
   );
+  const [hasStoredWallet, setHasStoredWallet] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [ethereumAddress, setEthereumAddress] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
@@ -242,6 +288,16 @@ function App() {
     let cancelled = false;
 
     async function checkPasskeySupport() {
+      if (!window.isSecureContext) {
+        if (!cancelled) {
+          setPasskeySupport("unsupported");
+          setPasskeyMessage(
+            "Passkey 需要 HTTPS 或 localhost 环境。请使用 GitHub Pages 部署地址或本地开发地址打开。",
+          );
+        }
+        return;
+      }
+
       if (!window.PublicKeyCredential) {
         if (!cancelled) {
           setPasskeySupport("unsupported");
@@ -288,7 +344,7 @@ function App() {
         if (!cancelled) {
           setWasmStatus("ready");
           setWasmMessage(
-            "Token Core WASM 已初始化，可以用于创建加密钱包和派生地址。",
+            "安全钱包模块已准备好。",
           );
         }
       } catch (error) {
@@ -296,8 +352,8 @@ function App() {
           setWasmStatus("failed");
           setWasmMessage(
             error instanceof Error
-              ? `Token Core WASM 初始化失败：${error.message}`
-              : "Token Core WASM 初始化失败，请检查浏览器控制台。",
+              ? `安全钱包模块初始化失败：${error.message}`
+              : "安全钱包模块初始化失败，请检查浏览器控制台。",
           );
         }
       }
@@ -314,13 +370,13 @@ function App() {
     const storedWallet = loadStoredWallet();
 
     if (!storedWallet?.ethereumSepoliaAddress) {
+      setHasStoredWallet(false);
       return;
     }
 
-    setEthereumAddress(storedWallet.ethereumSepoliaAddress);
-    setWalletStatus("created");
+    setHasStoredWallet(true);
     setWalletMessage(
-      "已从本机浏览器读取加密钱包记录。页面只展示地址，不展示助记词或私钥。",
+      "检测到本机浏览器里已有加密钱包记录，可用 Passkey 登录。",
     );
   }, []);
 
@@ -354,6 +410,43 @@ function App() {
     };
   }, [ethereumAddress]);
 
+  function getAuthStatusMessage() {
+    if (walletStatus === "creating" || walletStatus === "failed") {
+      return walletMessage;
+    }
+
+    if (passkeySupport === "unsupported") {
+      return passkeyMessage;
+    }
+
+    if (wasmStatus === "failed") {
+      return wasmMessage;
+    }
+
+    if (passkeySupport === "checking" || wasmStatus === "loading") {
+      return "正在准备安全创建环境。";
+    }
+
+    if (hasStoredWallet) {
+      return "检测到本机已有加密钱包，可使用 Passkey 登录。";
+    }
+
+    return "使用本机 Passkey 创建 Ethereum Sepolia 测试钱包。";
+  }
+
+  function handleLogout() {
+    setIsAuthenticated(false);
+    setEthereumAddress("");
+    setQrCodeUrl("");
+    setCopyMessage("");
+    setWalletStatus("idle");
+    setWalletMessage(
+      hasStoredWallet
+        ? "检测到本机浏览器里已有加密钱包记录，可用 Passkey 登录。"
+        : "点击 Create Passkey 后，会创建加密钱包并生成 Ethereum Sepolia 地址。",
+    );
+  }
+
   async function handleCreatePasskeyWallet() {
     if (passkeySupport !== "supported") {
       setPasskeyMessage(getPasskeySupportMessage("unsupported"));
@@ -362,7 +455,7 @@ function App() {
 
     if (wasmStatus !== "ready") {
       setWalletStatus("failed");
-      setWalletMessage("Token Core WASM 还没有初始化完成，请稍后再试。");
+      setWalletMessage("安全钱包模块还没有准备完成，请稍后再试。");
       return;
     }
 
@@ -406,6 +499,8 @@ function App() {
       });
 
       setEthereumAddress(address);
+      setHasStoredWallet(true);
+      setIsAuthenticated(true);
       setWalletStatus("created");
       setWalletMessage(
         "Ethereum Sepolia 地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
@@ -416,6 +511,49 @@ function App() {
         error instanceof Error
           ? error.message
           : "创建钱包失败，请重试或换支持 Passkey PRF 的浏览器。",
+      );
+    }
+  }
+
+  async function handleLoginWithPasskey() {
+    const storedWallet = loadStoredWallet();
+
+    if (!storedWallet) {
+      setWalletStatus("failed");
+      setWalletMessage("当前浏览器没有已保存的钱包记录，请先创建新测试钱包。");
+      return;
+    }
+
+    if (wasmStatus !== "ready") {
+      setWalletStatus("failed");
+      setWalletMessage("安全钱包模块还没有准备完成，请稍后再试。");
+      return;
+    }
+
+    try {
+      setWalletStatus("creating");
+      setWalletMessage("正在用 Passkey 解锁本机已保存的钱包记录。");
+
+      const prfKeyBytes = await requestPasskeyPrfKey(
+        base64UrlToArrayBuffer(storedWallet.credentialRawId),
+        hexToBytes(storedWallet.prfSaltHex),
+      );
+      const address = deriveEthereumSepoliaAddress(
+        storedWallet.keystoreJson,
+        bytesToHex(prfKeyBytes),
+      );
+
+      setEthereumAddress(address);
+      setHasStoredWallet(true);
+      setIsAuthenticated(true);
+      setWalletStatus("created");
+      setWalletMessage("Passkey 解锁成功，Ethereum Sepolia 地址已恢复。");
+    } catch (error) {
+      setWalletStatus("failed");
+      setWalletMessage(
+        error instanceof Error
+          ? error.message
+          : "Passkey 登录失败，请确认使用创建钱包时的同一台设备。",
       );
     }
   }
@@ -431,6 +569,78 @@ function App() {
     } catch {
       setCopyMessage("复制失败，请手动选择地址。");
     }
+  }
+
+  if (!isAuthenticated) {
+    const authActionDisabled =
+      passkeySupport !== "supported" ||
+      wasmStatus !== "ready" ||
+      walletStatus === "creating";
+
+    return (
+      <main className="auth-page" aria-label="创建或登录钱包">
+        <section className="auth-hero">
+          <div className="auth-icon-stack" aria-hidden="true">
+            <div className="auth-icon-card">
+              <Fingerprint size={88} strokeWidth={2.4} />
+            </div>
+            <div className="auth-icon-badge">
+              <ShieldCheck size={30} strokeWidth={2.2} />
+            </div>
+          </div>
+
+          <div className="auth-copy">
+            <h1>
+              Your keys,
+              <br />
+              simplified.
+            </h1>
+            <p>No seed phrase to lose. Access your assets with biometrics.</p>
+          </div>
+        </section>
+
+        <section className="auth-actions" aria-label="钱包操作">
+          <button
+            className="auth-primary-button"
+            disabled={authActionDisabled}
+            onClick={handleCreatePasskeyWallet}
+            type="button"
+          >
+            {walletStatus === "creating" ? "Creating..." : "Create Passkey"}
+          </button>
+
+          {hasStoredWallet ? (
+            <button
+              className="auth-secondary-button"
+              disabled={wasmStatus !== "ready" || walletStatus === "creating"}
+              onClick={handleLoginWithPasskey}
+              type="button"
+            >
+              Login with Passkey
+            </button>
+          ) : null}
+
+          <a
+            className="passkey-help-link"
+            href="https://passkeys.dev/docs/intro/what-are-passkeys/"
+            rel="noreferrer"
+            target="_blank"
+          >
+            What is a passkey?
+            <ExternalLink size={18} strokeWidth={2.2} />
+          </a>
+
+          <div className="encrypted-pill">
+            <LockKeyhole size={20} strokeWidth={2} />
+            End-to-end encrypted storage
+          </div>
+
+          <div className={`auth-status ${walletStatus}`} role="status">
+            {getAuthStatusMessage()}
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -463,7 +673,7 @@ function App() {
           <button className="nav-item muted" type="button">
             Help
           </button>
-          <button className="nav-item danger" type="button">
+          <button className="nav-item danger" onClick={handleLogout} type="button">
             Log Out
           </button>
         </div>
@@ -475,17 +685,16 @@ function App() {
             <p className="eyebrow">测试网 Demo</p>
             <h1>Passkey 多链钱包</h1>
             <p className="page-description">
-              第 5 步接入 Passkey 创建和 Token Core 地址派生。当前只生成
-              Ethereum Sepolia 测试网地址，不展示助记词或私钥。
+              Ethereum Sepolia 测试钱包已解锁。当前只显示公开地址和收款入口，
+              不展示助记词或私钥。
             </p>
           </div>
           <button
             className="primary-button"
-            disabled={walletStatus === "creating"}
-            onClick={handleCreatePasskeyWallet}
+            onClick={handleLogout}
             type="button"
           >
-            {walletStatus === "creating" ? "Creating..." : "Create Passkey"}
+            Log Out
           </button>
         </header>
 
@@ -508,66 +717,6 @@ function App() {
               <button type="button">Send</button>
               <button type="button">Portfolio</button>
               <button type="button">Settings</button>
-            </div>
-          </article>
-
-          <article className="panel passkey-panel">
-            <div className="panel-header">
-              <h2>Create Passkey</h2>
-              <span className={`pill ${passkeySupport}`}>
-                {passkeySupport === "checking"
-                  ? "Checking"
-                  : passkeySupport === "supported"
-                    ? "Supported"
-                    : "Unsupported"}
-              </span>
-            </div>
-            <div className="passkey-visual" aria-hidden="true">
-              <span>⌁</span>
-            </div>
-            <p className="muted-text">
-              Passkey 会用系统生物识别或设备密码来保护钱包。创建后页面只保存加密钱包文件和公开地址。
-            </p>
-            <div
-              className={`support-message ${passkeySupport}`}
-              role="status"
-            >
-              {passkeyMessage}
-            </div>
-            <button
-              className="secondary-button"
-              disabled={
-                passkeySupport !== "supported" ||
-                wasmStatus !== "ready" ||
-                walletStatus === "creating"
-              }
-              onClick={handleCreatePasskeyWallet}
-              type="button"
-            >
-              {walletStatus === "created" ? "Create New Wallet" : "Create Wallet"}
-            </button>
-          </article>
-
-          <article className="panel">
-            <div className="panel-header">
-              <h2>Token Core WASM</h2>
-              <span className={`pill ${wasmStatus}`}>
-                {wasmStatus === "loading"
-                  ? "Loading"
-                  : wasmStatus === "ready"
-                    ? "Ready"
-                    : "Failed"}
-              </span>
-            </div>
-            <div className="wasm-meter" aria-hidden="true">
-              <span />
-            </div>
-            <p className="muted-text">
-              Token Core WASM 会在后续步骤中负责 Ethereum、BSC、Bitcoin 和 TRON
-              的地址派生与签名。
-            </p>
-            <div className={`support-message ${wasmStatus}`} role="status">
-              {wasmMessage}
             </div>
           </article>
 
@@ -675,6 +824,7 @@ function App() {
             ) : null}
           </article>
         </section>
+
       </main>
     </div>
   );

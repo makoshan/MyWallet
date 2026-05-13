@@ -38,6 +38,152 @@ button {
   font: inherit;
 }
 
+.auth-page {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  color: var(--foreground);
+  padding: 72px 24px 40px;
+}
+
+.auth-hero {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.auth-icon-stack {
+  position: relative;
+  width: 170px;
+  height: 170px;
+}
+
+.auth-icon-card {
+  display: grid;
+  width: 144px;
+  height: 144px;
+  place-items: center;
+  border-radius: 38px;
+  background: #e7f1fc;
+  color: var(--primary);
+}
+
+.auth-icon-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 20px;
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 14px 30px rgba(0, 127, 255, 0.28);
+}
+
+.auth-copy {
+  margin-top: 22px;
+}
+
+.auth-copy h1 {
+  font-size: clamp(42px, 5vw, 58px);
+  line-height: 0.98;
+}
+
+.auth-copy p {
+  max-width: 480px;
+  margin-top: 34px;
+  color: var(--muted-foreground);
+  font-size: 20px;
+  line-height: 1.55;
+}
+
+.auth-actions {
+  display: grid;
+  width: min(560px, 100%);
+  gap: 16px;
+}
+
+.auth-primary-button,
+.auth-secondary-button {
+  min-height: 64px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.auth-primary-button {
+  background: linear-gradient(180deg, #2f94ff, var(--primary));
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(0, 127, 255, 0.2);
+}
+
+.auth-secondary-button {
+  background: #eef6ff;
+  color: var(--primary);
+}
+
+.auth-primary-button:disabled,
+.auth-secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.passkey-help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--primary);
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.encrypted-pill {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid #d7e8ff;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #33415f;
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(17, 29, 74, 0.08);
+}
+
+.auth-status {
+  min-height: 48px;
+  border-radius: 16px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  padding: 12px 16px;
+  text-align: center;
+}
+
+.auth-status.creating {
+  background: #eef6ff;
+  color: var(--primary);
+}
+
+.auth-status.failed {
+  background: #fff4ed;
+  color: #c74700;
+}
+
 .app-shell {
   display: grid;
   min-height: 100vh;
@@ -328,29 +474,6 @@ h2 {
   font-weight: 700;
 }
 
-.passkey-panel {
-  min-height: 320px;
-}
-
-.passkey-visual {
-  display: grid;
-  width: 96px;
-  height: 96px;
-  place-items: center;
-  margin: 24px auto 4px;
-  border-radius: 28px;
-  background: var(--primary-soft);
-  color: var(--primary);
-  font-size: 52px;
-  font-weight: 800;
-  line-height: 1;
-  box-shadow: 0 12px 28px rgba(0, 127, 255, 0.12);
-}
-
-.passkey-visual span {
-  transform: translateY(-3px);
-}
-
 .support-message {
   margin-top: 18px;
   border-radius: 14px;
@@ -390,23 +513,6 @@ h2 {
 .support-message.creating {
   background: #eef6ff;
   color: var(--primary);
-}
-
-.wasm-meter {
-  width: 100%;
-  height: 12px;
-  margin-top: 28px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #edf2f7;
-}
-
-.wasm-meter span {
-  display: block;
-  width: 72%;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--primary), #0cc5ff);
 }
 
 .network-list {
@@ -601,6 +707,37 @@ h2 {
 }
 
 @media (max-width: 640px) {
+  .auth-page {
+    padding: 48px 18px 28px;
+  }
+
+  .auth-icon-stack {
+    width: 140px;
+    height: 140px;
+  }
+
+  .auth-icon-card {
+    width: 118px;
+    height: 118px;
+    border-radius: 32px;
+  }
+
+  .auth-icon-badge {
+    width: 54px;
+    height: 54px;
+  }
+
+  .auth-copy p {
+    margin-top: 24px;
+    font-size: 17px;
+  }
+
+  .auth-primary-button,
+  .auth-secondary-button {
+    min-height: 56px;
+    font-size: 17px;
+  }
+
   .workspace {
     padding: 24px 16px;
   }
@@ -636,4 +773,5 @@ h2 {
   .deposit-address {
     grid-template-columns: 1fr;
   }
+
 }
