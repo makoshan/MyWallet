@@ -287,6 +287,16 @@ h2 {
   color: #c74700;
 }
 
+.pill.ready {
+  background: #ecfdf5;
+  color: #0f9f6e;
+}
+
+.pill.failed {
+  background: #fff4ed;
+  color: #c74700;
+}
+
 .action-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -345,6 +355,33 @@ h2 {
 .support-message.unsupported {
   background: #fff4ed;
   color: #c74700;
+}
+
+.support-message.ready {
+  background: #ecfdf5;
+  color: #0f9f6e;
+}
+
+.support-message.failed {
+  background: #fff4ed;
+  color: #c74700;
+}
+
+.wasm-meter {
+  width: 100%;
+  height: 12px;
+  margin-top: 28px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2f7;
+}
+
+.wasm-meter span {
+  display: block;
+  width: 72%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), #0cc5ff);
 }
 
 .network-list {

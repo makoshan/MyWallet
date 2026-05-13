@@ -1,4 +1,6 @@
 import { StrictMode, useEffect, useState } from "react";
+import initTokenCoreWasm from "@consenlabs/tcx-wasm";
+import tokenCoreWasmUrl from "@consenlabs/tcx-wasm/tcx_wasm_bg.wasm?url";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -13,6 +15,7 @@ const networks = [
 ];
 
 type PasskeySupport = "checking" | "supported" | "unsupported";
+type WasmStatus = "loading" | "ready" | "failed";
 
 function getPasskeySupportMessage(status: PasskeySupport) {
   if (status === "checking") {
@@ -31,6 +34,10 @@ function App() {
     useState<PasskeySupport>("checking");
   const [passkeyMessage, setPasskeyMessage] = useState(
     "打开页面后会自动检测 Passkey 支持情况。",
+  );
+  const [wasmStatus, setWasmStatus] = useState<WasmStatus>("loading");
+  const [wasmMessage, setWasmMessage] = useState(
+    "正在加载 Token Core WASM 模块。",
   );
 
   useEffect(() => {
@@ -67,6 +74,38 @@ function App() {
     }
 
     void checkPasskeySupport();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initializeTokenCore() {
+      try {
+        await initTokenCoreWasm({ module_or_path: tokenCoreWasmUrl });
+
+        if (!cancelled) {
+          setWasmStatus("ready");
+          setWasmMessage(
+            "Token Core WASM 已初始化。当前步骤只验证加载能力，不创建钱包、不签名。",
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setWasmStatus("failed");
+          setWasmMessage(
+            error instanceof Error
+              ? `Token Core WASM 初始化失败：${error.message}`
+              : "Token Core WASM 初始化失败，请检查浏览器控制台。",
+          );
+        }
+      }
+    }
+
+    void initializeTokenCore();
 
     return () => {
       cancelled = true;
@@ -126,8 +165,8 @@ function App() {
             <p className="eyebrow">测试网 Demo</p>
             <h1>Passkey 多链钱包</h1>
             <p className="page-description">
-              第 2 步完成基础钱包布局。现在还没有接入 Passkey、Token Core WASM、
-              地址生成或测试网广播。
+              第 4 步正在验证 Token Core WASM 初始化。现在还没有创建钱包、
+              地址生成、签名或测试网广播。
             </p>
           </div>
           <button
@@ -192,6 +231,29 @@ function App() {
             >
               Check and Continue
             </button>
+          </article>
+
+          <article className="panel">
+            <div className="panel-header">
+              <h2>Token Core WASM</h2>
+              <span className={`pill ${wasmStatus}`}>
+                {wasmStatus === "loading"
+                  ? "Loading"
+                  : wasmStatus === "ready"
+                    ? "Ready"
+                    : "Failed"}
+              </span>
+            </div>
+            <div className="wasm-meter" aria-hidden="true">
+              <span />
+            </div>
+            <p className="muted-text">
+              Token Core WASM 会在后续步骤中负责 Ethereum、BSC、Bitcoin 和 TRON
+              的地址派生与签名。
+            </p>
+            <div className={`support-message ${wasmStatus}`} role="status">
+              {wasmMessage}
+            </div>
           </article>
 
           <article className="panel wide">
