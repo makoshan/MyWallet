@@ -582,10 +582,10 @@ function App() {
         <section className="auth-hero">
           <div className="auth-icon-stack" aria-hidden="true">
             <div className="auth-icon-card">
-              <Fingerprint size={88} strokeWidth={2.4} />
+              <Fingerprint size={64} strokeWidth={2.3} />
             </div>
             <div className="auth-icon-badge">
-              <ShieldCheck size={30} strokeWidth={2.2} />
+              <ShieldCheck size={22} strokeWidth={2.2} />
             </div>
           </div>
 
@@ -627,11 +627,11 @@ function App() {
             target="_blank"
           >
             What is a passkey?
-            <ExternalLink size={18} strokeWidth={2.2} />
+            <ExternalLink size={15} strokeWidth={2.2} />
           </a>
 
           <div className="encrypted-pill">
-            <LockKeyhole size={20} strokeWidth={2} />
+            <LockKeyhole size={16} strokeWidth={2} />
             End-to-end encrypted storage
           </div>
 

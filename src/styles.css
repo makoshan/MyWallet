@@ -46,7 +46,7 @@ button {
   justify-content: space-between;
   background: #ffffff;
   color: var(--foreground);
-  padding: 72px 24px 40px;
+  padding: 56px 24px 34px;
 }
 
 .auth-hero {
@@ -60,16 +60,16 @@ button {
 
 .auth-icon-stack {
   position: relative;
-  width: 170px;
-  height: 170px;
+  width: 132px;
+  height: 132px;
 }
 
 .auth-icon-card {
   display: grid;
-  width: 144px;
-  height: 144px;
+  width: 112px;
+  height: 112px;
   place-items: center;
-  border-radius: 38px;
+  border-radius: 30px;
   background: #e7f1fc;
   color: var(--primary);
 }
@@ -77,10 +77,10 @@ button {
 .auth-icon-badge {
   position: absolute;
   right: 2px;
-  bottom: 20px;
+  bottom: 14px;
   display: grid;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   place-items: center;
   border-radius: 999px;
   background: var(--primary);
@@ -89,34 +89,34 @@ button {
 }
 
 .auth-copy {
-  margin-top: 22px;
+  margin-top: 18px;
 }
 
 .auth-copy h1 {
-  font-size: clamp(42px, 5vw, 58px);
-  line-height: 0.98;
+  font-size: clamp(32px, 3.6vw, 44px);
+  line-height: 1.05;
 }
 
 .auth-copy p {
-  max-width: 480px;
-  margin-top: 34px;
+  max-width: 420px;
+  margin-top: 22px;
   color: var(--muted-foreground);
-  font-size: 20px;
+  font-size: 16px;
   line-height: 1.55;
 }
 
 .auth-actions {
   display: grid;
-  width: min(560px, 100%);
-  gap: 16px;
+  width: min(480px, 100%);
+  gap: 12px;
 }
 
 .auth-primary-button,
 .auth-secondary-button {
-  min-height: 64px;
+  min-height: 52px;
   border: 0;
   border-radius: 999px;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -143,14 +143,14 @@ button {
   justify-content: center;
   gap: 8px;
   color: var(--primary);
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 700;
   text-decoration: none;
 }
 
 .encrypted-pill {
   display: flex;
-  min-height: 56px;
+  min-height: 46px;
   align-items: center;
   justify-content: center;
   gap: 12px;
@@ -158,19 +158,19 @@ button {
   border-radius: 999px;
   background: #eef6ff;
   color: #33415f;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   box-shadow: 0 6px 18px rgba(17, 29, 74, 0.08);
 }
 
 .auth-status {
-  min-height: 48px;
+  min-height: 42px;
   border-radius: 16px;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.6;
-  padding: 12px 16px;
+  padding: 10px 14px;
   text-align: center;
 }
 
@@ -708,34 +708,38 @@ h2 {
 
 @media (max-width: 640px) {
   .auth-page {
-    padding: 48px 18px 28px;
+    padding: 42px 18px 26px;
   }
 
   .auth-icon-stack {
-    width: 140px;
-    height: 140px;
+    width: 116px;
+    height: 116px;
   }
 
   .auth-icon-card {
-    width: 118px;
-    height: 118px;
-    border-radius: 32px;
+    width: 98px;
+    height: 98px;
+    border-radius: 28px;
   }
 
   .auth-icon-badge {
-    width: 54px;
-    height: 54px;
+    width: 42px;
+    height: 42px;
+  }
+
+  .auth-copy h1 {
+    font-size: clamp(30px, 9vw, 36px);
   }
 
   .auth-copy p {
-    margin-top: 24px;
-    font-size: 17px;
+    margin-top: 18px;
+    font-size: 15px;
   }
 
   .auth-primary-button,
   .auth-secondary-button {
-    min-height: 56px;
-    font-size: 17px;
+    min-height: 50px;
+    font-size: 16px;
   }
 
   .workspace {
