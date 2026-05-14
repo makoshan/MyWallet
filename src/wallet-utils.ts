@@ -79,6 +79,19 @@ export function formatLamportsToSol(lamports: bigint) {
   return `${whole.toString()}.${trimmedFraction}`;
 }
 
+export function formatSunToTrx(sun: bigint) {
+  const trxBase = 1_000_000n;
+  const whole = sun / trxBase;
+  const fraction = (sun % trxBase).toString().padStart(6, "0");
+  const trimmedFraction = fraction.replace(/0+$/, "");
+
+  if (!trimmedFraction) {
+    return whole.toString();
+  }
+
+  return `${whole.toString()}.${trimmedFraction}`;
+}
+
 export function parseEthToWei(value: string) {
   const normalized = value.trim();
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildReceiveNetworks,
   formatLamportsToSol,
+  formatSunToTrx,
   formatWeiToEth,
   getDefaultAssetBalances,
   getMnemonicBackupWarnings,
@@ -24,6 +25,12 @@ describe("wallet utils", () => {
     expect(formatLamportsToSol(0n)).toBe("0");
     expect(formatLamportsToSol(1_000_000_000n)).toBe("1");
     expect(formatLamportsToSol(1_234_567_890n)).toBe("1.234567");
+  });
+
+  it("formats sun as a readable TRX amount", () => {
+    expect(formatSunToTrx(0n)).toBe("0");
+    expect(formatSunToTrx(1_000_000n)).toBe("1");
+    expect(formatSunToTrx(1_234_567n)).toBe("1.234567");
   });
 
   it("parses ETH amount text into wei", () => {

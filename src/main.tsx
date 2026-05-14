@@ -21,6 +21,7 @@ import { derivePath } from "ed25519-hd-key";
 import {
   buildReceiveNetworks,
   formatLamportsToSol,
+  formatSunToTrx,
   formatWeiToEth,
   getDefaultAssetBalances,
   getMnemonicBackupWarnings,
@@ -56,6 +57,9 @@ const bscRpcUrl =
 const solanaRpcUrl =
   import.meta.env.VITE_SOLANA_RPC_URL ||
   "https://api.mainnet-beta.solana.com";
+const tronRpcUrl =
+  import.meta.env.VITE_TRON_RPC_URL ||
+  "https://api.trongrid.io";
 const ethereumExplorerBaseUrl = "https://etherscan.io";
 
 function getNetworks(
@@ -584,6 +588,32 @@ async function fetchSolanaBalance(address: string) {
   return BigInt(result.value);
 }
 
+async function fetchTronBalance(address: string) {
+  const response = await fetch(
+    `${tronRpcUrl.replace(/\/+$/, "")}/wallet/getaccount`,
+    {
+      body: JSON.stringify({
+        address,
+        visible: true,
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`TRON RPC 请求失败：HTTP ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    balance?: number;
+  };
+
+  return BigInt(data.balance ?? 0);
+}
+
 async function getPriorityFeePerGas() {
   try {
     return BigInt(await callEthereumRpc<string>("eth_maxPriorityFeePerGas", []));
@@ -952,13 +982,15 @@ function App() {
     }
 
     setBalanceStatus("loading");
-    setBalanceMessage("正在查询 Ethereum、BSC 和 Solana 主网余额。");
+    setBalanceMessage("正在查询 Ethereum、BSC、Solana 和 TRON 主网余额。");
 
-    const [ethereumResult, bscResult, solanaResult] = await Promise.allSettled([
-      fetchEthereumBalance(ethereumAddress),
-      fetchEvmBalance(bscRpcConfig, ethereumAddress),
-      solanaAddress ? fetchSolanaBalance(solanaAddress) : Promise.resolve(0n),
-    ]);
+    const [ethereumResult, bscResult, solanaResult, tronResult] =
+      await Promise.allSettled([
+        fetchEthereumBalance(ethereumAddress),
+        fetchEvmBalance(bscRpcConfig, ethereumAddress),
+        solanaAddress ? fetchSolanaBalance(solanaAddress) : Promise.resolve(0n),
+        tronAddress ? fetchTronBalance(tronAddress) : Promise.resolve(0n),
+      ]);
     const failedNetworks: string[] = [];
     const nextBalances = getDefaultAssetBalances().map((asset) => {
       if (asset.id === "ethereum") {
@@ -985,6 +1017,13 @@ function App() {
         failedNetworks.push("Solana");
       }
 
+      if (asset.id === "tron") {
+        if (tronResult.status === "fulfilled") {
+          return { ...asset, balance: formatSunToTrx(tronResult.value) };
+        }
+        failedNetworks.push("TRON");
+      }
+
       return asset;
     });
 
@@ -992,8 +1031,8 @@ function App() {
     setBalanceStatus(failedNetworks.length ? "failed" : "ready");
     setBalanceMessage(
       failedNetworks.length
-        ? `${failedNetworks.join("、")} 余额暂时查询失败，已按 0 显示；BTC 和 TRON 余额 API 后续接入。`
-        : "Ethereum、BSC 和 Solana 主网余额已更新；BTC 和 TRON 暂时默认显示 0。",
+        ? `${failedNetworks.join("、")} 余额暂时查询失败，已按 0 显示；BTC 余额 API 后续接入。`
+        : "Ethereum、BSC、Solana 和 TRON 主网余额已更新；BTC 暂时默认显示 0。",
     );
   }
 

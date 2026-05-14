@@ -38,6 +38,7 @@ jobs:
           VITE_ETHEREUM_RPC_URL: ${{ secrets.VITE_ETHEREUM_RPC_URL }}
           VITE_BSC_RPC_URL: ${{ secrets.VITE_BSC_RPC_URL }}
           VITE_SOLANA_RPC_URL: ${{ secrets.VITE_SOLANA_RPC_URL }}
+          VITE_TRON_RPC_URL: ${{ secrets.VITE_TRON_RPC_URL }}
         run: npm run build
 
       - name: Upload artifact
