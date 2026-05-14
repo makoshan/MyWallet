@@ -12,6 +12,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import QRCode from "qrcode";
+import { Buffer } from "buffer";
 import { createRoot } from "react-dom/client";
 import { keyPairFromSeed } from "@ton/crypto";
 import { WalletContractV4 } from "@ton/ton";
@@ -34,42 +35,47 @@ const navItems = [
   { label: "Deposit Funds", view: "receive" },
   { label: "Settings", view: "settings" },
 ] as const;
-const walletStorageKey = "mywallet.passkeyWallet.v1";
-const sepoliaChainId = "11155111";
-const sepoliaChainIdHex = "0xaa36a7";
+const walletStorageKey = "mywallet.passkeyWallet.v2";
+const ethereumChainId = "1";
+const ethereumChainIdHex = "0x1";
 const ethereumDerivationPath = "m/44'/60'/0'/0/0";
+const bitcoinDerivationPath = "m/84'/0'/0'/0/0";
 const tronDerivationPath = "m/44'/195'/0'/0/0";
-const tonDerivationLabel = "MyWallet TON Testnet v1 m/44'/607'/0'";
-const sepoliaRpcUrl =
-  import.meta.env.VITE_SEPOLIA_RPC_URL ??
-  "https://ethereum-sepolia-rpc.publicnode.com";
-const sepoliaExplorerBaseUrl = "https://sepolia.etherscan.io";
-const sepoliaFaucetUrl = "https://sepolia-faucet.pk910.de/";
+const tonDerivationLabel = "MyWallet TON Mainnet v1 m/44'/607'/0'";
+const ethereumRpcUrl =
+  import.meta.env.VITE_ETHEREUM_RPC_URL ??
+  "https://ethereum-rpc.publicnode.com";
+const ethereumExplorerBaseUrl = "https://etherscan.io";
 
 function getNetworks(
   ethereumAddress: string,
+  bitcoinAddress: string,
   tronAddress: string,
   tonAddress: string,
 ) {
   return [
     {
-      name: "Ethereum Sepolia",
+      name: "Ethereum",
       status: ethereumAddress ? "地址已生成" : "等待创建",
       badge: ethereumAddress ? "Connected" : "Not connected",
     },
     {
-      name: "BSC Testnet",
+      name: "BSC",
       status: ethereumAddress ? "复用 EVM 地址" : "等待创建",
       badge: ethereumAddress ? "Connected" : "Not connected",
     },
-    { name: "Bitcoin Testnet", status: "后续接入", badge: "Not connected" },
     {
-      name: "TON Testnet",
+      name: "Bitcoin",
+      status: bitcoinAddress ? "地址已生成" : "等待创建",
+      badge: bitcoinAddress ? "Connected" : "Not connected",
+    },
+    {
+      name: "TON",
       status: tonAddress ? "地址已生成" : "等待创建",
       badge: tonAddress ? "Connected" : "Not connected",
     },
     {
-      name: "TRON Testnet",
+      name: "TRON",
       status: tronAddress ? "地址已生成" : "等待创建",
       badge: tronAddress ? "Connected" : "Not connected",
     },
@@ -90,16 +96,17 @@ type SendStatus =
   | "failed";
 
 type StoredWallet = {
-  version: 1;
+  version: 2;
   keystoreJson: string;
   credentialId: string;
   credentialRawId: string;
   userId: string;
   rpId: string;
   prfSaltHex: string;
-  ethereumSepoliaAddress: string;
-  tonTestnetAddress?: string;
-  tronTestnetAddress?: string;
+  bitcoinAddress: string;
+  ethereumAddress: string;
+  tonAddress: string;
+  tronAddress: string;
   createdAt: string;
 };
 
@@ -289,12 +296,13 @@ async function createPasskeyCredential(userIdBytes: Uint8Array<ArrayBuffer>) {
 }
 
 type DerivedWalletAddresses = {
+  bitcoinAddress: string;
   ethereumAddress: string;
   tonAddress: string;
   tronAddress: string;
 };
 
-function deriveTokenCoreTestnetAddresses(
+function deriveTokenCoreMainnetAddresses(
   keystoreJson: string,
   prfKeyHex: string,
 ) {
@@ -304,14 +312,20 @@ function deriveTokenCoreTestnetAddresses(
         derivations: [
           {
             chain: "ETHEREUM",
-            chainId: sepoliaChainId,
+            chainId: ethereumChainId,
             derivationPath: ethereumDerivationPath,
-            network: "TESTNET",
+            network: "MAINNET",
+          },
+          {
+            chain: "BITCOIN",
+            derivationPath: bitcoinDerivationPath,
+            network: "MAINNET",
+            segWit: "VERSION_0",
           },
           {
             chain: "TRON",
             derivationPath: tronDerivationPath,
-            network: "TESTNET",
+            network: "MAINNET",
           },
         ],
         key: prfKeyHex,
@@ -323,25 +337,33 @@ function deriveTokenCoreTestnetAddresses(
   const ethereumAddress =
     accounts.find((account) => account.chain === "ETHEREUM")?.address ??
     accounts[0]?.address;
+  const bitcoinAddress =
+    accounts.find((account) => account.chain === "BITCOIN")?.address ??
+    accounts[1]?.address;
   const tronAddress =
     accounts.find((account) => account.chain === "TRON")?.address ??
-    accounts[1]?.address;
+    accounts[2]?.address;
 
   if (!ethereumAddress) {
-    throw new Error("Token Core 没有返回 Ethereum Sepolia 地址。");
+    throw new Error("Token Core 没有返回 Ethereum 主网地址。");
+  }
+
+  if (!bitcoinAddress) {
+    throw new Error("Token Core 没有返回 Bitcoin 主网地址。");
   }
 
   if (!tronAddress) {
-    throw new Error("Token Core 没有返回 TRON Testnet 地址。");
+    throw new Error("Token Core 没有返回 TRON 主网地址。");
   }
 
   return {
+    bitcoinAddress,
     ethereumAddress,
     tronAddress,
   };
 }
 
-async function deriveTonTestnetAddress(prfKeyBytes: Uint8Array) {
+async function deriveTonMainnetAddress(prfKeyBytes: Uint8Array) {
   const prfKeyCopy = new Uint8Array(new ArrayBuffer(prfKeyBytes.byteLength));
   prfKeyCopy.set(prfKeyBytes);
   const hmacKey = await crypto.subtle.importKey(
@@ -368,7 +390,6 @@ async function deriveTonTestnetAddress(prfKeyBytes: Uint8Array) {
 
   return wallet.address.toString({
     bounceable: false,
-    testOnly: true,
   });
 }
 
@@ -377,11 +398,11 @@ async function deriveWalletAddresses(
   prfKeyBytes: Uint8Array,
 ): Promise<DerivedWalletAddresses> {
   const prfKeyHex = bytesToHex(prfKeyBytes);
-  const tokenCoreAddresses = deriveTokenCoreTestnetAddresses(
+  const tokenCoreAddresses = deriveTokenCoreMainnetAddresses(
     keystoreJson,
     prfKeyHex,
   );
-  const tonAddress = await deriveTonTestnetAddress(prfKeyBytes);
+  const tonAddress = await deriveTonMainnetAddress(prfKeyBytes);
 
   return {
     ...tokenCoreAddresses,
@@ -411,16 +432,16 @@ function bigintToQuantity(value: bigint) {
   return `0x${value.toString(16)}`;
 }
 
-async function callSepoliaRpc<T>(
+async function callEthereumRpc<T>(
   method: string,
   params: unknown[],
   options: { skipNetworkCheck?: boolean } = {},
 ) {
   if (!options.skipNetworkCheck && method !== "eth_chainId") {
-    await ensureSepoliaRpcNetwork();
+    await ensureEthereumRpcNetwork();
   }
 
-  const response = await fetch(sepoliaRpcUrl, {
+  const response = await fetch(ethereumRpcUrl, {
     body: JSON.stringify({
       id: Date.now(),
       jsonrpc: "2.0",
@@ -434,7 +455,7 @@ async function callSepoliaRpc<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`Sepolia RPC 请求失败：HTTP ${response.status}`);
+    throw new Error(`Ethereum RPC 请求失败：HTTP ${response.status}`);
   }
 
   const data = (await response.json()) as {
@@ -443,34 +464,34 @@ async function callSepoliaRpc<T>(
   };
 
   if (data.error) {
-    throw new Error(data.error.message ?? "Sepolia RPC 返回错误。");
+    throw new Error(data.error.message ?? "Ethereum RPC 返回错误。");
   }
 
   if (data.result === undefined || data.result === null) {
-    throw new Error("Sepolia RPC 没有返回结果。");
+    throw new Error("Ethereum RPC 没有返回结果。");
   }
 
   return data.result;
 }
 
-let sepoliaRpcNetworkCheck: Promise<void> | null = null;
+let ethereumRpcNetworkCheck: Promise<void> | null = null;
 
-async function ensureSepoliaRpcNetwork() {
-  sepoliaRpcNetworkCheck ??= callSepoliaRpc<string>("eth_chainId", [], {
+async function ensureEthereumRpcNetwork() {
+  ethereumRpcNetworkCheck ??= callEthereumRpc<string>("eth_chainId", [], {
     skipNetworkCheck: true,
   }).then((chainId) => {
-    if (chainId.toLowerCase() !== sepoliaChainIdHex) {
+    if (chainId.toLowerCase() !== ethereumChainIdHex) {
       throw new Error(
-        "当前 RPC 不是 Ethereum Sepolia。请检查 VITE_SEPOLIA_RPC_URL，不要使用 Ethereum Mainnet RPC。",
+        "当前 RPC 不是 Ethereum 主网。请检查 VITE_ETHEREUM_RPC_URL。",
       );
     }
   });
 
-  return sepoliaRpcNetworkCheck;
+  return ethereumRpcNetworkCheck;
 }
 
-async function fetchSepoliaBalance(address: string) {
-  const result = await callSepoliaRpc<string>("eth_getBalance", [
+async function fetchEthereumBalance(address: string) {
+  const result = await callEthereumRpc<string>("eth_getBalance", [
     address,
     "latest",
   ]);
@@ -479,32 +500,32 @@ async function fetchSepoliaBalance(address: string) {
 
 async function getPriorityFeePerGas() {
   try {
-    return BigInt(await callSepoliaRpc<string>("eth_maxPriorityFeePerGas", []));
+    return BigInt(await callEthereumRpc<string>("eth_maxPriorityFeePerGas", []));
   } catch {
     return 1_000_000_000n;
   }
 }
 
 async function getBaseFeePerGas() {
-  const block = await callSepoliaRpc<{ baseFeePerGas?: string }>(
+  const block = await callEthereumRpc<{ baseFeePerGas?: string }>(
     "eth_getBlockByNumber",
     ["latest", false],
   );
 
   if (!block.baseFeePerGas) {
-    return BigInt(await callSepoliaRpc<string>("eth_gasPrice", []));
+    return BigInt(await callEthereumRpc<string>("eth_gasPrice", []));
   }
 
   return BigInt(block.baseFeePerGas);
 }
 
-async function estimateSepoliaNativeTransferGas(
+async function estimateEthereumNativeTransferGas(
   from: string,
   to: string,
   valueWei: bigint,
 ) {
   try {
-    const gasLimitHex = await callSepoliaRpc<string>("eth_estimateGas", [
+    const gasLimitHex = await callEthereumRpc<string>("eth_estimateGas", [
       {
         from,
         to,
@@ -518,15 +539,15 @@ async function estimateSepoliaNativeTransferGas(
   }
 }
 
-async function prepareSepoliaTransfer(
+async function prepareEthereumTransfer(
   from: string,
   to: string,
   valueWei: bigint,
 ): Promise<TransactionPlan> {
   const [nonceHex, gasLimit, baseFeePerGas, maxPriorityFeePerGas] =
     await Promise.all([
-      callSepoliaRpc<string>("eth_getTransactionCount", [from, "pending"]),
-      estimateSepoliaNativeTransferGas(from, to, valueWei),
+      callEthereumRpc<string>("eth_getTransactionCount", [from, "pending"]),
+      estimateEthereumNativeTransferGas(from, to, valueWei),
       getBaseFeePerGas(),
       getPriorityFeePerGas(),
     ]);
@@ -543,7 +564,7 @@ async function prepareSepoliaTransfer(
 }
 
 async function broadcastRawTransaction(rawTransaction: string) {
-  return callSepoliaRpc<string>("eth_sendRawTransaction", [rawTransaction]);
+  return callEthereumRpc<string>("eth_sendRawTransaction", [rawTransaction]);
 }
 
 function App() {
@@ -558,7 +579,7 @@ function App() {
   );
   const [walletStatus, setWalletStatus] = useState<WalletStatus>("idle");
   const [walletMessage, setWalletMessage] = useState(
-    "点击 Create Passkey 后，会创建加密钱包并生成 Ethereum Sepolia 地址。",
+    "点击 Create Passkey 后，会创建加密钱包并生成五链主网地址。",
   );
   const [hasStoredWallet, setHasStoredWallet] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -566,6 +587,7 @@ function App() {
     getViewFromPath(window.location.pathname),
   );
   const [ethereumAddress, setEthereumAddress] = useState("");
+  const [bitcoinAddress, setBitcoinAddress] = useState("");
   const [tronAddress, setTronAddress] = useState("");
   const [tonAddress, setTonAddress] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
@@ -573,7 +595,7 @@ function App() {
   const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
   const [balanceStatus, setBalanceStatus] = useState<BalanceStatus>("idle");
   const [balanceMessage, setBalanceMessage] = useState(
-    "创建钱包后可以刷新 Sepolia ETH 余额。",
+    "创建钱包后可以刷新 Ethereum 主网 ETH 余额。",
   );
   const [recipientAddress, setRecipientAddress] = useState("");
   const [sendAmount, setSendAmount] = useState("");
@@ -589,8 +611,14 @@ function App() {
   const [isReceiveNetworkMenuOpen, setIsReceiveNetworkMenuOpen] =
     useState(false);
 
-  const networks = getNetworks(ethereumAddress, tronAddress, tonAddress);
+  const networks = getNetworks(
+    ethereumAddress,
+    bitcoinAddress,
+    tronAddress,
+    tonAddress,
+  );
   const receiveNetworks = buildReceiveNetworks({
+    bitcoinAddress,
     ethereumAddress,
     tonAddress,
     tronAddress,
@@ -684,7 +712,7 @@ function App() {
   useEffect(() => {
     const storedWallet = loadStoredWallet();
 
-    if (!storedWallet?.ethereumSepoliaAddress) {
+    if (!storedWallet?.ethereumAddress) {
       setHasStoredWallet(false);
       return;
     }
@@ -780,13 +808,14 @@ function App() {
       return "检测到本机已有加密钱包，可使用 Passkey 登录。";
     }
 
-    return "使用本机 Passkey 创建 Ethereum Sepolia 测试钱包。";
+    return "使用本机 Passkey 创建五链主网钱包。";
   }
 
   function handleLogout() {
     setIsAuthenticated(false);
     navigateToView("dashboard");
     setEthereumAddress("");
+    setBitcoinAddress("");
     setTronAddress("");
     setTonAddress("");
     setSelectedReceiveNetworkId("ethereum");
@@ -801,7 +830,7 @@ function App() {
     setWalletMessage(
       hasStoredWallet
         ? "检测到本机浏览器里已有加密钱包记录，可用 Passkey 登录。"
-        : "点击 Create Passkey 后，会创建加密钱包并生成 Ethereum Sepolia 地址。",
+        : "点击 Create Passkey 后，会创建加密钱包并生成五链主网地址。",
     );
   }
 
@@ -812,17 +841,17 @@ function App() {
 
     try {
       setBalanceStatus("loading");
-      setBalanceMessage("正在查询 Sepolia ETH 余额。");
-      const nextBalanceWei = await fetchSepoliaBalance(ethereumAddress);
+      setBalanceMessage("正在查询 Ethereum 主网 ETH 余额。");
+      const nextBalanceWei = await fetchEthereumBalance(ethereumAddress);
       setBalanceWei(nextBalanceWei);
       setBalanceStatus("ready");
-      setBalanceMessage("Sepolia ETH 余额已更新。");
+      setBalanceMessage("Ethereum 主网 ETH 余额已更新。");
     } catch (error) {
       setBalanceStatus("failed");
       setBalanceMessage(
         error instanceof Error
           ? error.message
-          : "Sepolia ETH 余额查询失败，请稍后重试。",
+          : "Ethereum 主网 ETH 余额查询失败，请稍后重试。",
       );
     }
   }
@@ -858,7 +887,7 @@ function App() {
       const keystoreJson = create_keystore(
         JSON.stringify({
           credentialId: credential.id,
-          network: "TESTNET",
+          network: "MAINNET",
           prfKey: prfKeyHex,
           rpId,
           userId,
@@ -873,17 +902,19 @@ function App() {
         createdAt: new Date().toISOString(),
         credentialId: credential.id,
         credentialRawId: arrayBufferToBase64Url(credential.rawId),
-        ethereumSepoliaAddress: addresses.ethereumAddress,
+        bitcoinAddress: addresses.bitcoinAddress,
+        ethereumAddress: addresses.ethereumAddress,
         keystoreJson,
         prfSaltHex: bytesToHex(prfSalt),
         rpId,
-        tonTestnetAddress: addresses.tonAddress,
-        tronTestnetAddress: addresses.tronAddress,
+        tonAddress: addresses.tonAddress,
+        tronAddress: addresses.tronAddress,
         userId,
-        version: 1,
+        version: 2,
       });
 
       setEthereumAddress(addresses.ethereumAddress);
+      setBitcoinAddress(addresses.bitcoinAddress);
       setTronAddress(addresses.tronAddress);
       setTonAddress(addresses.tonAddress);
       setHasStoredWallet(true);
@@ -891,7 +922,7 @@ function App() {
       navigateToView(getViewFromPath(window.location.pathname));
       setWalletStatus("created");
       setWalletMessage(
-        "Ethereum Sepolia、TRON Testnet 和 TON Testnet 地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
+        "Ethereum、BSC、Bitcoin、TON 和 TRON 主网地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
       );
     } catch (error) {
       setWalletStatus("failed");
@@ -908,7 +939,7 @@ function App() {
 
     if (!storedWallet) {
       setWalletStatus("failed");
-      setWalletMessage("当前浏览器没有已保存的钱包记录，请先创建新测试钱包。");
+      setWalletMessage("当前浏览器没有已保存的钱包记录，请先创建新主网钱包。");
       return;
     }
 
@@ -933,19 +964,21 @@ function App() {
 
       saveStoredWallet({
         ...storedWallet,
-        ethereumSepoliaAddress: addresses.ethereumAddress,
-        tonTestnetAddress: addresses.tonAddress,
-        tronTestnetAddress: addresses.tronAddress,
+        bitcoinAddress: addresses.bitcoinAddress,
+        ethereumAddress: addresses.ethereumAddress,
+        tonAddress: addresses.tonAddress,
+        tronAddress: addresses.tronAddress,
       });
 
       setEthereumAddress(addresses.ethereumAddress);
+      setBitcoinAddress(addresses.bitcoinAddress);
       setTronAddress(addresses.tronAddress);
       setTonAddress(addresses.tonAddress);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
       navigateToView(getViewFromPath(window.location.pathname));
       setWalletStatus("created");
-      setWalletMessage("Passkey 解锁成功，多链测试网地址已恢复。");
+      setWalletMessage("Passkey 解锁成功，五链主网地址已恢复。");
     } catch (error) {
       setWalletStatus("failed");
       setWalletMessage(
@@ -987,7 +1020,7 @@ function App() {
       const valueWei = parseEthToWei(sendAmount);
       setSendStatus("review");
       setSendMessage("正在准备交易摘要。");
-      const plan = await prepareSepoliaTransfer(
+      const plan = await prepareEthereumTransfer(
         ethereumAddress,
         recipientAddress.trim(),
         valueWei,
@@ -1027,7 +1060,7 @@ function App() {
             derivationPath: ethereumDerivationPath,
             input: {
               accessList: [],
-              chainId: sepoliaChainId,
+              chainId: ethereumChainId,
               data: "0x",
               gasLimit: String(transactionPlan.gasLimit),
               maxFeePerGas: String(transactionPlan.maxFeePerGas),
@@ -1046,11 +1079,11 @@ function App() {
       ) as SignedEthTransaction;
 
       setSendStatus("broadcasting");
-      setSendMessage("签名完成，正在广播到 Ethereum Sepolia。");
+      setSendMessage("签名完成，正在广播到 Ethereum 主网。");
       const hash = await broadcastRawTransaction(signed.signature);
       setSentTxHash(hash || signed.txHash);
       setSendStatus("sent");
-      setSendMessage("交易已广播。可以在 Sepolia Etherscan 查看状态。");
+      setSendMessage("交易已广播。可以在 Etherscan 查看状态。");
       void refreshBalance();
     } catch (error) {
       setSendStatus("failed");
@@ -1143,10 +1176,10 @@ function App() {
     settings: "Settings",
   };
   const viewDescription: Record<AppView, string> = {
-    dashboard: "Ethereum Sepolia 测试钱包已解锁。当前只显示公开地址和收款入口，不展示助记词或私钥。",
-    portfolio: "查看 Sepolia ETH 测试币余额和资产状态。",
+    dashboard: "五链主网钱包已解锁。当前只显示公开地址和收款入口，不展示助记词或私钥。",
+    portfolio: "查看 Ethereum 主网 ETH 余额和资产状态。",
     receive: "Receive crypto to your wallet",
-    send: "输入接收地址和金额，Review 后使用 Passkey 签名并广播。",
+    send: "输入接收地址和金额，Review 后使用 Passkey 签名并广播到 Ethereum 主网。",
     settings: "当前 demo 只提供退出登录和安全提示。",
   };
 
@@ -1192,7 +1225,7 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">测试网 Demo</p>
+            <p className="eyebrow">主网 Demo</p>
             <h1>{viewTitle[currentView]}</h1>
             <p className="page-description">{viewDescription[currentView]}</p>
           </div>
@@ -1208,7 +1241,7 @@ function App() {
         {currentView === "dashboard" ? (
           <section className="content-grid" aria-label="钱包概览">
             <article className="panel balance-panel">
-              <div className="panel-label">Sepolia ETH Balance</div>
+              <div className="panel-label">Ethereum ETH Balance</div>
               <div className="balance">{balanceText} ETH</div>
               <p className="muted-text">{balanceMessage}</p>
               <button
@@ -1223,7 +1256,7 @@ function App() {
             <article className="panel">
               <div className="panel-header">
                 <h2>Quick Actions</h2>
-                <span className="pill">Sepolia</span>
+                <span className="pill">Mainnet</span>
               </div>
               <div className="action-grid">
                 <button onClick={() => navigateToView("receive")} type="button">
@@ -1243,7 +1276,7 @@ function App() {
 
             <article className="panel wide">
               <div className="panel-header">
-                <h2>Test Networks</h2>
+                <h2>Main Networks</h2>
                 <span className="pill">5 chains</span>
               </div>
               <div className="network-list">
@@ -1386,19 +1419,11 @@ function App() {
               </div>
               <div className="faucet-row">
                 <div>
-                  <div className="network-name">领取 Sepolia ETH 测试币</div>
+                  <div className="network-name">主网资产提醒</div>
                   <p className="muted-text">
-                    第三方 faucet 会打开新页面，把上面的地址填进去领取测试币。
+                    当前页面显示真实主网地址。第一次测试请只转入很小金额，并确认网络选择正确。
                   </p>
                 </div>
-                <a
-                  className="link-button"
-                  href={sepoliaFaucetUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Open Faucet
-                </a>
               </div>
             </article>
           </section>
@@ -1424,9 +1449,9 @@ function App() {
                   E
                 </div>
                 <div>
-                  <div className="network-name">Sepolia ETH</div>
+                  <div className="network-name">ETH</div>
                   <div className="network-status">
-                    Ethereum Sepolia 原生测试币
+                    Ethereum 主网原生币
                   </div>
                 </div>
                 <strong>{balanceText} ETH</strong>
@@ -1447,7 +1472,7 @@ function App() {
           <section className="single-view" aria-label="转账">
             <article className="panel send-panel">
               <div className="panel-header">
-                <h2>Send Sepolia ETH</h2>
+                <h2>Send ETH</h2>
                 <span className={`pill ${sendStatus}`}>
                   {sendStatus === "sent"
                     ? "Broadcasted"
@@ -1538,11 +1563,11 @@ function App() {
               {sentTxHash ? (
                 <a
                   className="explorer-link"
-                  href={`${sepoliaExplorerBaseUrl}/tx/${sentTxHash}`}
+                  href={`${ethereumExplorerBaseUrl}/tx/${sentTxHash}`}
                   rel="noreferrer"
                   target="_blank"
                 >
-                  View transaction on Sepolia Etherscan
+                  View transaction on Etherscan
                 </a>
               ) : null}
             </article>
@@ -1557,7 +1582,7 @@ function App() {
                 <span className="pill">Demo</span>
               </div>
               <p className="muted-text">
-                当前 demo 的加密钱包记录只保存在本机浏览器。请只在测试网使用。
+                当前 demo 的加密钱包记录只保存在本机浏览器。主网操作请先小额测试，并做好助记词备份。
               </p>
               <button
                 className="primary-button form-action"

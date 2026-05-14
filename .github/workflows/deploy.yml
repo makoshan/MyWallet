@@ -35,7 +35,7 @@ jobs:
 
       - name: Build
         env:
-          VITE_SEPOLIA_RPC_URL: ${{ secrets.VITE_SEPOLIA_RPC_URL }}
+          VITE_ETHEREUM_RPC_URL: ${{ secrets.VITE_ETHEREUM_RPC_URL }}
         run: npm run build
 
       - name: Upload artifact

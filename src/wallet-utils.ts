@@ -3,7 +3,7 @@ const weiBase = 10n ** BigInt(ethDecimals);
 const appBasePath = "/MyWallet";
 
 export type WalletView = "dashboard" | "portfolio" | "receive" | "send" | "settings";
-export type ReceiveNetworkId = "ethereum" | "bsc" | "tron" | "ton";
+export type ReceiveNetworkId = "ethereum" | "bsc" | "bitcoin" | "tron" | "ton";
 
 export type ReceiveNetwork = {
   id: ReceiveNetworkId;
@@ -16,6 +16,7 @@ export type ReceiveNetwork = {
 };
 
 export type ReceiveAddresses = {
+  bitcoinAddress: string;
   ethereumAddress: string;
   tonAddress: string;
   tronAddress: string;
@@ -107,6 +108,7 @@ export function getPathForView(view: WalletView) {
 }
 
 export function buildReceiveNetworks({
+  bitcoinAddress,
   ethereumAddress,
   tonAddress,
   tronAddress,
@@ -114,43 +116,53 @@ export function buildReceiveNetworks({
   return [
     {
       address: ethereumAddress,
-      assetName: "Sepolia ETH",
+      assetName: "ETH",
       badge: "E",
       id: "ethereum",
-      name: "Ethereum Sepolia",
-      note: "Ethereum Sepolia 使用当前钱包的 EVM 测试网地址。",
+      name: "Ethereum",
+      note: "Ethereum 使用当前钱包的 EVM 主网地址。",
       warning:
-        "只发送 Ethereum Sepolia 测试网 ETH 到这个地址。发送其他网络或资产可能无法找回。",
+        "只发送 Ethereum 主网 ETH 到这个地址。发送其他网络或资产可能无法找回。",
     },
     {
       address: ethereumAddress,
-      assetName: "BSC Testnet BNB",
+      assetName: "BNB",
       badge: "B",
       id: "bsc",
-      name: "BSC Testnet",
-      note: "BSC Testnet 与 Ethereum 使用同一个 EVM 地址，但网络不同。",
+      name: "BSC",
+      note: "BSC 与 Ethereum 使用同一个 EVM 地址，但网络不同。",
       warning:
-        "只发送 BSC Testnet BNB 到这个地址。不要把主网 BNB 或其他网络资产转入。",
+        "只发送 BSC 主网 BNB 到这个地址。不要把其他网络资产转入。",
     },
     {
-      address: tronAddress,
-      assetName: "TRON Testnet TRX",
-      badge: "T",
-      id: "tron",
-      name: "TRON Testnet",
-      note: "TRON Testnet 使用 Token Core 按 TRON 路径派生出的测试网地址。",
+      address: bitcoinAddress,
+      assetName: "BTC",
+      badge: "B",
+      id: "bitcoin",
+      name: "Bitcoin",
+      note: "Bitcoin 使用 Native SegWit 主网地址，地址通常以 bc1q 开头。",
       warning:
-        "只发送 TRON 测试网 TRX 到这个地址。不要把主网 TRX 或其他网络资产转入。",
+        "只发送 Bitcoin 主网 BTC 到这个地址。不要把其他网络 BTC 或其他资产转入。",
     },
     {
       address: tonAddress,
-      assetName: "TON Testnet TON",
+      assetName: "TON",
       badge: "T",
       id: "ton",
-      name: "TON Testnet",
-      note: "TON Testnet 使用 TON 专用库从 Passkey 加密材料派生测试网地址。",
+      name: "TON",
+      note: "TON 使用 TON 专用库从 Passkey 加密材料派生主网地址。",
       warning:
-        "只发送 TON Testnet TON 到这个地址。不要把主网 TON 或其他网络资产转入。",
+        "只发送 TON 主网 TON 到这个地址。不要把其他网络资产转入。",
+    },
+    {
+      address: tronAddress,
+      assetName: "TRX",
+      badge: "T",
+      id: "tron",
+      name: "TRON",
+      note: "TRON 使用 Token Core 按 TRON 路径派生出的主网地址。",
+      warning:
+        "只发送 TRON 主网 TRX 到这个地址。不要把其他网络资产转入。",
     },
   ];
 }

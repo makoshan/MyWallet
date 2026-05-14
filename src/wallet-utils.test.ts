@@ -51,11 +51,13 @@ describe("wallet utils", () => {
     expect(getPathForView("dashboard")).toBe("/MyWallet/");
   });
 
-  it("builds receive network options with EVM, TRON and TON addresses", () => {
+  it("builds receive network options with mainnet EVM, BTC, TRON and TON addresses", () => {
     const ethereumAddress = "0x4533c05fCB9d719327016e5029d985aB6a7275BB";
+    const bitcoinAddress = "bc1q7j6f7m9q2sx8d2c0z6v5zn7l2skq9mfd0rw9z8";
     const tronAddress = "TJ83hu2gvY93FGhgDt9Ws5FB7TrhDYy3XG";
-    const tonAddress = "0QDcB_cHx9Yfwv4b4sLcW2tRg4HNjZJLqjr0TBKCL2-7NUNn";
+    const tonAddress = "UQDcB_cHx9Yfwv4b4sLcW2tRg4HNjZJLqjr0TBKCL2-7NWvQ";
     const networks = buildReceiveNetworks({
+      bitcoinAddress,
       ethereumAddress,
       tonAddress,
       tronAddress,
@@ -64,12 +66,17 @@ describe("wallet utils", () => {
     expect(networks.map((network) => network.id)).toEqual([
       "ethereum",
       "bsc",
-      "tron",
+      "bitcoin",
       "ton",
+      "tron",
     ]);
     expect(networks[0].address).toBe(ethereumAddress);
     expect(networks[1].address).toBe(ethereumAddress);
-    expect(networks[2].address).toBe(tronAddress);
+    expect(networks[2].address).toBe(bitcoinAddress);
     expect(networks[3].address).toBe(tonAddress);
+    expect(networks[4].address).toBe(tronAddress);
+    expect(networks.every((network) => !network.name.includes("Testnet"))).toBe(
+      true,
+    );
   });
 });
