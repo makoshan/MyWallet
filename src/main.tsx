@@ -1452,7 +1452,7 @@ function App() {
                     </div>
                     <div>
                       <div className="network-name">{asset.symbol}</div>
-                      <div className="network-status">{asset.name} 主网原生币</div>
+                      <div className="network-status">{asset.name}</div>
                     </div>
                     <strong>
                       {asset.balance} {asset.symbol}
