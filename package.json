@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && cp dist/index.html dist/404.html",
+    "build": "tsc --noEmit && vite build && cp dist/index.html dist/404.html && mkdir -p dist/receive && cp dist/index.html dist/receive/index.html",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
