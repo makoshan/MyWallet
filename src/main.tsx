@@ -15,9 +15,12 @@ import QRCode from "qrcode";
 import { createRoot } from "react-dom/client";
 import {
   formatWeiToEth,
+  getPathForView,
+  getViewFromPath,
   parseEthToWei,
   shortenAddress,
   validateEthereumAddress,
+  type WalletView,
 } from "./wallet-utils";
 import "./styles.css";
 
@@ -54,7 +57,7 @@ function getNetworks(ethereumAddress: string) {
 type PasskeySupport = "checking" | "supported" | "unsupported";
 type WasmStatus = "loading" | "ready" | "failed";
 type WalletStatus = "idle" | "creating" | "created" | "failed";
-type AppView = (typeof navItems)[number]["view"] | "send";
+type AppView = WalletView;
 type BalanceStatus = "idle" | "loading" | "ready" | "failed";
 type SendStatus =
   | "idle"
@@ -460,7 +463,9 @@ function App() {
   );
   const [hasStoredWallet, setHasStoredWallet] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentView, setCurrentView] = useState<AppView>("dashboard");
+  const [currentView, setCurrentView] = useState<AppView>(() =>
+    getViewFromPath(window.location.pathname),
+  );
   const [ethereumAddress, setEthereumAddress] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
@@ -617,6 +622,27 @@ function App() {
     void refreshBalance();
   }, [ethereumAddress, isAuthenticated]);
 
+  useEffect(() => {
+    function handlePopState() {
+      setCurrentView(getViewFromPath(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  function navigateToView(view: AppView) {
+    setCurrentView(view);
+    const nextPath = getPathForView(view);
+
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
+  }
+
   function getAuthStatusMessage() {
     if (walletStatus === "creating" || walletStatus === "failed") {
       return walletMessage;
@@ -643,7 +669,7 @@ function App() {
 
   function handleLogout() {
     setIsAuthenticated(false);
-    setCurrentView("dashboard");
+    navigateToView("dashboard");
     setEthereumAddress("");
     setQrCodeUrl("");
     setCopyMessage("");
@@ -736,7 +762,7 @@ function App() {
       setEthereumAddress(address);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
-      setCurrentView("dashboard");
+      navigateToView(getViewFromPath(window.location.pathname));
       setWalletStatus("created");
       setWalletMessage(
         "Ethereum Sepolia 地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
@@ -782,7 +808,7 @@ function App() {
       setEthereumAddress(address);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
-      setCurrentView("dashboard");
+      navigateToView(getViewFromPath(window.location.pathname));
       setWalletStatus("created");
       setWalletMessage("Passkey 解锁成功，Ethereum Sepolia 地址已恢复。");
     } catch (error) {
@@ -972,14 +998,14 @@ function App() {
   const viewTitle: Record<AppView, string> = {
     dashboard: "Passkey 多链钱包",
     portfolio: "Portfolio",
-    receive: "Receive",
+    receive: "Deposit Funds",
     send: "Send",
     settings: "Settings",
   };
   const viewDescription: Record<AppView, string> = {
     dashboard: "Ethereum Sepolia 测试钱包已解锁。当前只显示公开地址和收款入口，不展示助记词或私钥。",
     portfolio: "查看 Sepolia ETH 测试币余额和资产状态。",
-    receive: "展示钱包地址和二维码，用于接收 Ethereum Sepolia 测试币。",
+    receive: "Receive crypto to your wallet",
     send: "输入接收地址和金额，Review 后使用 Passkey 签名并广播。",
     settings: "当前 demo 只提供退出登录和安全提示。",
   };
@@ -1004,7 +1030,7 @@ function App() {
                 item.view === currentView ? "nav-item active" : "nav-item"
               }
               key={item.label}
-              onClick={() => setCurrentView(item.view)}
+              onClick={() => navigateToView(item.view)}
               type="button"
             >
               <span className="nav-dot" aria-hidden="true" />
@@ -1060,16 +1086,16 @@ function App() {
                 <span className="pill">Sepolia</span>
               </div>
               <div className="action-grid">
-                <button onClick={() => setCurrentView("receive")} type="button">
+                <button onClick={() => navigateToView("receive")} type="button">
                   Receive
                 </button>
-                <button onClick={() => setCurrentView("send")} type="button">
+                <button onClick={() => navigateToView("send")} type="button">
                   Send
                 </button>
-                <button onClick={() => setCurrentView("portfolio")} type="button">
+                <button onClick={() => navigateToView("portfolio")} type="button">
                   Portfolio
                 </button>
-                <button onClick={() => setCurrentView("settings")} type="button">
+                <button onClick={() => navigateToView("settings")} type="button">
                   Settings
                 </button>
               </div>
@@ -1130,6 +1156,14 @@ function App() {
         {currentView === "receive" ? (
           <section className="single-view" aria-label="收款">
             <article className="panel receive-panel">
+              <div className="receive-network-label">Select Network</div>
+              <div className="receive-network-select" aria-label="当前收款网络">
+                <div className="network-avatar" aria-hidden="true">
+                  E
+                </div>
+                <strong>Ethereum Sepolia</strong>
+                <span aria-hidden="true">⌄</span>
+              </div>
               <div className="panel-header">
                 <h2>Receive Sepolia ETH</h2>
                 <span className="pill created">Ready</span>
@@ -1141,6 +1175,10 @@ function App() {
                   src={qrCodeUrl}
                 />
               ) : null}
+              <p className="qr-caption">
+                Scan this QR code to send Sepolia ETH to your wallet
+              </p>
+              <div className="receive-address-label">Your Ethereum Sepolia Address</div>
               <div className="deposit-address large">
                 <span>{receiveAddress}</span>
                 <button onClick={copyEthereumAddress} type="button">
@@ -1154,6 +1192,18 @@ function App() {
               ) : null}
               <div className="deposit-warning" role="note">
                 只发送 Ethereum Sepolia 测试网 ETH 到这个地址。发送其他网络或资产可能无法找回。
+              </div>
+              <div className="receive-copy-panel">
+                <p>
+                  <strong>Alpha:</strong> Ethereum Sepolia 使用当前钱包派生的测试网地址。
+                </p>
+                <button
+                  className="primary-button receive-copy-button"
+                  onClick={copyEthereumAddress}
+                  type="button"
+                >
+                  Copy {shortenAddress(receiveAddress)}
+                </button>
               </div>
               <div className="faucet-row">
                 <div>

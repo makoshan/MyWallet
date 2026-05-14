@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatWeiToEth,
+  getPathForView,
+  getViewFromPath,
   parseEthToWei,
   shortenAddress,
   validateEthereumAddress,
@@ -35,5 +37,16 @@ describe("wallet utils", () => {
     expect(validateEthereumAddress(address)).toBe(true);
     expect(validateEthereumAddress("0x1234")).toBe(false);
     expect(shortenAddress(address)).toBe("0x4533...7275BB");
+  });
+
+  it("maps receive route to receive view", () => {
+    expect(getViewFromPath("/MyWallet/receive")).toBe("receive");
+    expect(getViewFromPath("/MyWallet/")).toBe("dashboard");
+    expect(getViewFromPath("/MyWallet/unknown")).toBe("dashboard");
+  });
+
+  it("builds GitHub Pages paths for wallet views", () => {
+    expect(getPathForView("receive")).toBe("/MyWallet/receive");
+    expect(getPathForView("dashboard")).toBe("/MyWallet/");
   });
 });

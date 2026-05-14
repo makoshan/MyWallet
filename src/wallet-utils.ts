@@ -1,5 +1,8 @@
 const ethDecimals = 18;
 const weiBase = 10n ** BigInt(ethDecimals);
+const appBasePath = "/MyWallet";
+
+export type WalletView = "dashboard" | "portfolio" | "receive" | "send" | "settings";
 
 export function formatWeiToEth(wei: bigint) {
   const whole = wei / weiBase;
@@ -51,4 +54,37 @@ export function shortenAddress(address: string) {
   }
 
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
+}
+
+export function getViewFromPath(pathname: string): WalletView {
+  const normalizedPath = pathname.replace(/\/+$/, "");
+  const route = normalizedPath.startsWith(appBasePath)
+    ? normalizedPath.slice(appBasePath.length)
+    : normalizedPath;
+
+  if (route === "/portfolio") {
+    return "portfolio";
+  }
+
+  if (route === "/receive") {
+    return "receive";
+  }
+
+  if (route === "/send") {
+    return "send";
+  }
+
+  if (route === "/settings") {
+    return "settings";
+  }
+
+  return "dashboard";
+}
+
+export function getPathForView(view: WalletView) {
+  if (view === "dashboard") {
+    return `${appBasePath}/`;
+  }
+
+  return `${appBasePath}/${view}`;
 }

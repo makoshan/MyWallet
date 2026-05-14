@@ -732,19 +732,82 @@ h2 {
   justify-self: center;
 }
 
+.receive-network-label,
+.receive-address-label {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.receive-network-select {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 28px;
+  border: 1px solid #dde3ec;
+  border-radius: 14px;
+  background: #f0f1f3;
+  padding: 14px 16px;
+}
+
+.receive-network-select strong {
+  font-size: 17px;
+}
+
+.receive-network-select span {
+  color: var(--muted-foreground);
+  font-size: 20px;
+  font-weight: 700;
+}
+
 .qr-code.large {
   width: 240px;
   height: 240px;
   margin-top: 28px;
 }
 
+.qr-caption {
+  margin-top: 18px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  text-align: center;
+}
+
 .deposit-address.large {
-  margin-top: 24px;
+  margin-top: 12px;
   padding: 14px;
 }
 
 .deposit-address.large span {
   font-size: 13px;
+}
+
+.receive-address-label {
+  margin-top: 28px;
+}
+
+.receive-copy-panel {
+  margin-top: 18px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #eaf4ff;
+  padding: 14px;
+}
+
+.receive-copy-panel p {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.receive-copy-panel strong {
+  color: var(--foreground);
+}
+
+.receive-copy-button {
+  width: 100%;
+  margin-top: 14px;
 }
 
 .faucet-row,
