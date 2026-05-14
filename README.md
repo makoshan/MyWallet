@@ -94,10 +94,13 @@ cp .env.example .env.local
 可配置的变量：
 
 ```bash
-VITE_ETHEREUM_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/your-alchemy-api-key
-VITE_BSC_RPC_URL=https://bnb-mainnet.g.alchemy.com/v2/your-alchemy-api-key
-VITE_SOLANA_RPC_URL=https://solana-mainnet.g.alchemy.com/v2/your-alchemy-api-key
-VITE_TRON_RPC_URL=https://api.trongrid.io
+VITE_ALCHEMY_API_KEY=your-alchemy-api-key
+
+# 可选：只在需要覆盖某条链 RPC 时配置
+# VITE_ETHEREUM_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/your-alchemy-api-key
+# VITE_BSC_RPC_URL=https://bnb-mainnet.g.alchemy.com/v2/your-alchemy-api-key
+# VITE_SOLANA_RPC_URL=https://solana-mainnet.g.alchemy.com/v2/your-alchemy-api-key
+# VITE_TRON_RPC_URL=https://tron-mainnet.g.alchemy.com/v2/your-alchemy-api-key
 ```
 
 注意：

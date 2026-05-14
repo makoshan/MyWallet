@@ -26,6 +26,7 @@ import {
   getDefaultAssetBalances,
   getMnemonicBackupWarnings,
   getPathForView,
+  getRpcUrls,
   getViewFromPath,
   parseEthToWei,
   shortenAddress,
@@ -50,18 +51,17 @@ const ethereumDerivationPath = "m/44'/60'/0'/0/0";
 const bitcoinDerivationPath = "m/84'/0'/0'/0/0";
 const tronDerivationPath = "m/44'/195'/0'/0/0";
 const solanaDerivationPath = "m/44'/501'/0'/0'";
-const ethereumRpcUrl =
-  import.meta.env.VITE_ETHEREUM_RPC_URL ||
-  "https://ethereum-rpc.publicnode.com";
-const bscRpcUrl =
-  import.meta.env.VITE_BSC_RPC_URL ||
-  "https://bsc-rpc.publicnode.com";
-const solanaRpcUrl =
-  import.meta.env.VITE_SOLANA_RPC_URL ||
-  "https://api.mainnet-beta.solana.com";
-const tronRpcUrl =
-  import.meta.env.VITE_TRON_RPC_URL ||
-  "https://api.trongrid.io";
+const rpcUrls = getRpcUrls({
+  VITE_ALCHEMY_API_KEY: import.meta.env.VITE_ALCHEMY_API_KEY,
+  VITE_BSC_RPC_URL: import.meta.env.VITE_BSC_RPC_URL,
+  VITE_ETHEREUM_RPC_URL: import.meta.env.VITE_ETHEREUM_RPC_URL,
+  VITE_SOLANA_RPC_URL: import.meta.env.VITE_SOLANA_RPC_URL,
+  VITE_TRON_RPC_URL: import.meta.env.VITE_TRON_RPC_URL,
+});
+const ethereumRpcUrl = rpcUrls.ethereum;
+const bscRpcUrl = rpcUrls.bsc;
+const solanaRpcUrl = rpcUrls.solana;
+const tronRpcUrl = rpcUrls.tron;
 const ethereumExplorerBaseUrl = "https://etherscan.io";
 
 function getTokenLogoSrc(logoFile: string) {

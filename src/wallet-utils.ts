@@ -36,6 +36,41 @@ export type AssetBalance = {
   logoFile: string;
 };
 
+export type RpcEnv = {
+  VITE_ALCHEMY_API_KEY?: string;
+  VITE_ETHEREUM_RPC_URL?: string;
+  VITE_BSC_RPC_URL?: string;
+  VITE_SOLANA_RPC_URL?: string;
+  VITE_TRON_RPC_URL?: string;
+};
+
+export function getRpcUrls(env: RpcEnv) {
+  const alchemyApiKey = env.VITE_ALCHEMY_API_KEY?.trim();
+  const alchemyRpcUrl = (network: string) =>
+    alchemyApiKey
+      ? `https://${network}.g.alchemy.com/v2/${alchemyApiKey}`
+      : undefined;
+
+  return {
+    bsc:
+      env.VITE_BSC_RPC_URL ||
+      alchemyRpcUrl("bnb-mainnet") ||
+      "https://bsc-rpc.publicnode.com",
+    ethereum:
+      env.VITE_ETHEREUM_RPC_URL ||
+      alchemyRpcUrl("eth-mainnet") ||
+      "https://ethereum-rpc.publicnode.com",
+    solana:
+      env.VITE_SOLANA_RPC_URL ||
+      alchemyRpcUrl("solana-mainnet") ||
+      "https://api.mainnet-beta.solana.com",
+    tron:
+      env.VITE_TRON_RPC_URL ||
+      alchemyRpcUrl("tron-mainnet") ||
+      "https://tron-mainnet.g.alchemy.com/v2",
+  };
+}
+
 export function getDefaultAssetBalances(): AssetBalance[] {
   return [
     {

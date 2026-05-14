@@ -8,6 +8,7 @@ import {
   getDefaultAssetBalances,
   getMnemonicBackupWarnings,
   getPathForView,
+  getRpcUrls,
   getViewFromPath,
   parseEthToWei,
   shortenAddress,
@@ -134,5 +135,27 @@ describe("wallet utils", () => {
     expect(warnings).toContain("只手抄到纸上，不要截图、拍照或复制到剪贴板。");
     expect(warnings).toContain("不要保存到网盘、聊天软件、邮箱、备忘录或任何联网服务。");
     expect(warnings).toContain("任何人拿到助记词都可以转走你的资产。");
+  });
+
+  it("builds Alchemy mainnet RPC URLs from one API key", () => {
+    expect(getRpcUrls({ VITE_ALCHEMY_API_KEY: "alchemy-key" })).toEqual({
+      bsc: "https://bnb-mainnet.g.alchemy.com/v2/alchemy-key",
+      ethereum: "https://eth-mainnet.g.alchemy.com/v2/alchemy-key",
+      solana: "https://solana-mainnet.g.alchemy.com/v2/alchemy-key",
+      tron: "https://tron-mainnet.g.alchemy.com/v2/alchemy-key",
+    });
+  });
+
+  it("lets full RPC URLs override the shared Alchemy key", () => {
+    expect(
+      getRpcUrls({
+        VITE_ALCHEMY_API_KEY: "alchemy-key",
+        VITE_ETHEREUM_RPC_URL: "https://example.com/eth",
+        VITE_TRON_RPC_URL: "https://example.com/tron/",
+      }),
+    ).toMatchObject({
+      ethereum: "https://example.com/eth",
+      tron: "https://example.com/tron/",
+    });
   });
 });
