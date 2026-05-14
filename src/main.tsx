@@ -1471,8 +1471,9 @@ function App() {
             <article className="panel balance-panel">
               <div className="panel-header">
                 <div>
-                  <div className="panel-label">Mainnet Balances</div>
-                  <h2>Native Assets</h2>
+                  <div className="panel-label">Total Balance</div>
+                  <div className="balance">$0.00</div>
+                  <p className="balance-subtitle">资产明细</p>
                 </div>
                 <span className={`pill ${balanceStatus}`}>
                   {balanceStatus === "loading"
