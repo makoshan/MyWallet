@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildReceiveNetworks,
   formatWeiToEth,
   getPathForView,
   getViewFromPath,
@@ -48,5 +49,21 @@ describe("wallet utils", () => {
   it("builds GitHub Pages paths for wallet views", () => {
     expect(getPathForView("receive")).toBe("/MyWallet/receive");
     expect(getPathForView("dashboard")).toBe("/MyWallet/");
+  });
+
+  it("builds receive network options without fake non-EVM addresses", () => {
+    const address = "0x4533c05fCB9d719327016e5029d985aB6a7275BB";
+    const networks = buildReceiveNetworks(address);
+
+    expect(networks.map((network) => network.id)).toEqual([
+      "ethereum",
+      "bsc",
+      "tron",
+      "solana",
+    ]);
+    expect(networks[0].address).toBe(address);
+    expect(networks[1].address).toBe(address);
+    expect(networks[2].address).toBe("");
+    expect(networks[3].address).toBe("");
   });
 });

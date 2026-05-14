@@ -14,6 +14,7 @@ import {
 import QRCode from "qrcode";
 import { createRoot } from "react-dom/client";
 import {
+  buildReceiveNetworks,
   formatWeiToEth,
   getPathForView,
   getViewFromPath,
@@ -21,6 +22,7 @@ import {
   shortenAddress,
   validateEthereumAddress,
   type WalletView,
+  type ReceiveNetworkId,
 } from "./wallet-utils";
 import "./styles.css";
 
@@ -483,8 +485,16 @@ function App() {
   const [transactionPlan, setTransactionPlan] =
     useState<TransactionPlan | null>(null);
   const [sentTxHash, setSentTxHash] = useState("");
+  const [selectedReceiveNetworkId, setSelectedReceiveNetworkId] =
+    useState<ReceiveNetworkId>("ethereum");
+  const [isReceiveNetworkMenuOpen, setIsReceiveNetworkMenuOpen] =
+    useState(false);
 
   const networks = getNetworks(ethereumAddress);
+  const receiveNetworks = buildReceiveNetworks(ethereumAddress);
+  const selectedReceiveNetwork =
+    receiveNetworks.find((network) => network.id === selectedReceiveNetworkId) ??
+    receiveNetworks[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -586,19 +596,22 @@ function App() {
     let cancelled = false;
 
     async function createQrCode() {
-      if (!ethereumAddress) {
+      if (!selectedReceiveNetwork.address) {
         setQrCodeUrl("");
         return;
       }
 
-      const nextQrCodeUrl = await QRCode.toDataURL(ethereumAddress, {
-        color: {
-          dark: "#111d4a",
-          light: "#ffffff",
+      const nextQrCodeUrl = await QRCode.toDataURL(
+        selectedReceiveNetwork.address,
+        {
+          color: {
+            dark: "#111d4a",
+            light: "#ffffff",
+          },
+          margin: 2,
+          width: 240,
         },
-        margin: 2,
-        width: 240,
-      });
+      );
 
       if (!cancelled) {
         setQrCodeUrl(nextQrCodeUrl);
@@ -610,7 +623,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [ethereumAddress]);
+  }, [selectedReceiveNetwork.address]);
 
   useEffect(() => {
     if (!ethereumAddress || !isAuthenticated) {
@@ -821,17 +834,21 @@ function App() {
     }
   }
 
-  async function copyEthereumAddress() {
-    if (!ethereumAddress) {
+  async function copyAddress(address = ethereumAddress) {
+    if (!address) {
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(ethereumAddress);
+      await navigator.clipboard.writeText(address);
       setCopyMessage("地址已复制。");
     } catch {
       setCopyMessage("复制失败，请手动选择地址。");
     }
+  }
+
+  async function copyEthereumAddress() {
+    await copyAddress(ethereumAddress);
   }
 
   async function handleReviewTransfer() {
@@ -994,7 +1011,8 @@ function App() {
   }
 
   const balanceText = balanceWei === null ? "0" : formatWeiToEth(balanceWei);
-  const receiveAddress = ethereumAddress || "创建钱包后显示收款地址";
+  const receiveAddress =
+    selectedReceiveNetwork.address || `${selectedReceiveNetwork.name} 地址后续接入`;
   const viewTitle: Record<AppView, string> = {
     dashboard: "Passkey 多链钱包",
     portfolio: "Portfolio",
@@ -1157,31 +1175,88 @@ function App() {
           <section className="single-view" aria-label="收款">
             <article className="panel receive-panel">
               <div className="receive-network-label">Select Network</div>
-              <div className="receive-network-select" aria-label="当前收款网络">
+              <button
+                className="receive-network-select"
+                onClick={() =>
+                  setIsReceiveNetworkMenuOpen((isMenuOpen) => !isMenuOpen)
+                }
+                type="button"
+              >
                 <div className="network-avatar" aria-hidden="true">
-                  E
+                  {selectedReceiveNetwork.badge}
                 </div>
-                <strong>Ethereum Sepolia</strong>
+                <strong>{selectedReceiveNetwork.name}</strong>
                 <span aria-hidden="true">⌄</span>
-              </div>
+              </button>
+              {isReceiveNetworkMenuOpen ? (
+                <div className="receive-network-menu">
+                  {receiveNetworks.map((network) => (
+                    <button
+                      className={
+                        network.id === selectedReceiveNetworkId
+                          ? "receive-network-option active"
+                          : "receive-network-option"
+                      }
+                      key={network.id}
+                      onClick={() => {
+                        setSelectedReceiveNetworkId(network.id);
+                        setIsReceiveNetworkMenuOpen(false);
+                        setCopyMessage("");
+                      }}
+                      type="button"
+                    >
+                      <div className="network-avatar" aria-hidden="true">
+                        {network.badge}
+                      </div>
+                      <div>
+                        <strong>{network.name}</strong>
+                        <span>
+                          {network.address
+                            ? shortenAddress(network.address)
+                            : "地址后续接入"}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <div className="panel-header">
-                <h2>Receive Sepolia ETH</h2>
-                <span className="pill created">Ready</span>
+                <h2>Receive {selectedReceiveNetwork.assetName}</h2>
+                <span
+                  className={
+                    selectedReceiveNetwork.address
+                      ? "pill created"
+                      : "pill unsupported"
+                  }
+                >
+                  {selectedReceiveNetwork.address ? "Ready" : "Coming Soon"}
+                </span>
               </div>
               {qrCodeUrl ? (
                 <img
-                  alt="Ethereum Sepolia 收款二维码"
+                  alt={`${selectedReceiveNetwork.name} 收款二维码`}
                   className="qr-code large"
                   src={qrCodeUrl}
                 />
-              ) : null}
+              ) : (
+                <div className="qr-placeholder receive-placeholder" aria-hidden="true">
+                  QR
+                </div>
+              )}
               <p className="qr-caption">
-                Scan this QR code to send Sepolia ETH to your wallet
+                Scan this QR code to send {selectedReceiveNetwork.assetName} to
+                your wallet
               </p>
-              <div className="receive-address-label">Your Ethereum Sepolia Address</div>
+              <div className="receive-address-label">
+                Your {selectedReceiveNetwork.name} Address
+              </div>
               <div className="deposit-address large">
                 <span>{receiveAddress}</span>
-                <button onClick={copyEthereumAddress} type="button">
+                <button
+                  disabled={!selectedReceiveNetwork.address}
+                  onClick={() => copyAddress(selectedReceiveNetwork.address)}
+                  type="button"
+                >
                   Copy
                 </button>
               </div>
@@ -1191,18 +1266,21 @@ function App() {
                 </div>
               ) : null}
               <div className="deposit-warning" role="note">
-                只发送 Ethereum Sepolia 测试网 ETH 到这个地址。发送其他网络或资产可能无法找回。
+                {selectedReceiveNetwork.warning}
               </div>
               <div className="receive-copy-panel">
                 <p>
-                  <strong>Alpha:</strong> Ethereum Sepolia 使用当前钱包派生的测试网地址。
+                  <strong>Alpha:</strong> {selectedReceiveNetwork.note}
                 </p>
                 <button
                   className="primary-button receive-copy-button"
-                  onClick={copyEthereumAddress}
+                  disabled={!selectedReceiveNetwork.address}
+                  onClick={() => copyAddress(selectedReceiveNetwork.address)}
                   type="button"
                 >
-                  Copy {shortenAddress(receiveAddress)}
+                  {selectedReceiveNetwork.address
+                    ? `Copy ${shortenAddress(selectedReceiveNetwork.address)}`
+                    : "Address Coming Soon"}
                 </button>
               </div>
               <div className="faucet-row">

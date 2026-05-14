@@ -3,6 +3,17 @@ const weiBase = 10n ** BigInt(ethDecimals);
 const appBasePath = "/MyWallet";
 
 export type WalletView = "dashboard" | "portfolio" | "receive" | "send" | "settings";
+export type ReceiveNetworkId = "ethereum" | "bsc" | "tron" | "solana";
+
+export type ReceiveNetwork = {
+  id: ReceiveNetworkId;
+  name: string;
+  assetName: string;
+  address: string;
+  badge: string;
+  note: string;
+  warning: string;
+};
 
 export function formatWeiToEth(wei: bigint) {
   const whole = wei / weiBase;
@@ -87,4 +98,49 @@ export function getPathForView(view: WalletView) {
   }
 
   return `${appBasePath}/${view}`;
+}
+
+export function buildReceiveNetworks(ethereumAddress: string): ReceiveNetwork[] {
+  return [
+    {
+      address: ethereumAddress,
+      assetName: "Sepolia ETH",
+      badge: "E",
+      id: "ethereum",
+      name: "Ethereum Sepolia",
+      note: "Ethereum Sepolia 使用当前钱包的 EVM 测试网地址。",
+      warning:
+        "只发送 Ethereum Sepolia 测试网 ETH 到这个地址。发送其他网络或资产可能无法找回。",
+    },
+    {
+      address: ethereumAddress,
+      assetName: "BSC Testnet BNB",
+      badge: "B",
+      id: "bsc",
+      name: "BSC Testnet",
+      note: "BSC Testnet 与 Ethereum 使用同一个 EVM 地址，但网络不同。",
+      warning:
+        "只发送 BSC Testnet BNB 到这个地址。不要把主网 BNB 或其他网络资产转入。",
+    },
+    {
+      address: "",
+      assetName: "TRON Testnet TRX",
+      badge: "T",
+      id: "tron",
+      name: "TRON Testnet",
+      note: "TRON 地址会在第 12 步接入 Token Core 后显示。",
+      warning:
+        "TRON 测试网地址尚未生成，当前不要向这里转入 TRX。",
+    },
+    {
+      address: "",
+      assetName: "Solana Devnet SOL",
+      badge: "S",
+      id: "solana",
+      name: "Solana Devnet",
+      note: "Solana Devnet 地址会在第 11 步接入 Solana 专用库后显示。",
+      warning:
+        "Solana Devnet 地址尚未生成，当前不要向这里转入 SOL。",
+    },
+  ];
 }
