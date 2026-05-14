@@ -365,6 +365,13 @@ h2 {
   opacity: 0.72;
 }
 
+.secondary-button.compact {
+  width: auto;
+  min-width: 160px;
+  margin-top: 18px;
+  padding: 0 20px;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
@@ -458,6 +465,19 @@ h2 {
   color: var(--primary);
 }
 
+.pill.loading,
+.pill.review,
+.pill.signing,
+.pill.broadcasting {
+  background: #eef6ff;
+  color: var(--primary);
+}
+
+.pill.sent {
+  background: #ecfdf5;
+  color: #0f9f6e;
+}
+
 .action-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -513,6 +533,18 @@ h2 {
 .support-message.creating {
   background: #eef6ff;
   color: var(--primary);
+}
+
+.support-message.review,
+.support-message.signing,
+.support-message.broadcasting {
+  background: #eef6ff;
+  color: var(--primary);
+}
+
+.support-message.sent {
+  background: #ecfdf5;
+  color: #0f9f6e;
 }
 
 .network-list {
@@ -686,6 +718,149 @@ h2 {
   padding: 12px 14px;
 }
 
+.single-view {
+  display: grid;
+  margin-top: 32px;
+}
+
+.single-view .panel {
+  width: min(900px, 100%);
+}
+
+.receive-panel,
+.send-panel {
+  justify-self: center;
+}
+
+.qr-code.large {
+  width: 240px;
+  height: 240px;
+  margin-top: 28px;
+}
+
+.deposit-address.large {
+  margin-top: 24px;
+  padding: 14px;
+}
+
+.deposit-address.large span {
+  font-size: 13px;
+}
+
+.faucet-row,
+.asset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+  border-radius: 16px;
+  background: var(--surface-cool);
+  padding: 16px;
+}
+
+.asset-row {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+}
+
+.asset-row strong {
+  white-space: nowrap;
+}
+
+.link-button,
+.explorer-link {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0 18px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.explorer-link {
+  margin-top: 16px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.form-grid input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #dde3ec;
+  border-radius: 14px;
+  background: var(--surface-cool);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 14px;
+  padding: 0 14px;
+}
+
+.form-grid input:focus {
+  border-color: var(--primary);
+  outline: 3px solid rgba(0, 127, 255, 0.12);
+}
+
+.form-action {
+  margin-top: 18px;
+}
+
+.review-box {
+  margin-top: 20px;
+  border: 1px solid #d7e8ff;
+  border-radius: 16px;
+  background: #f6faff;
+  padding: 18px;
+}
+
+.review-box h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.review-box dl {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+
+.review-box dl div {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.review-box dt {
+  color: var(--muted-foreground);
+  font-weight: 700;
+}
+
+.review-box dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 @media (max-width: 960px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -776,6 +951,16 @@ h2 {
 
   .deposit-address {
     grid-template-columns: 1fr;
+  }
+
+  .faucet-row,
+  .asset-row {
+    grid-template-columns: 1fr;
+  }
+
+  .review-box dl div {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
 }

@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from "react";
 import initTokenCoreWasm, {
   create_keystore,
   derive_accounts,
+  sign_tx,
 } from "@consenlabs/tcx-wasm";
 import tokenCoreWasmUrl from "@consenlabs/tcx-wasm/tcx_wasm_bg.wasm?url";
 import {
@@ -12,10 +13,28 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import { createRoot } from "react-dom/client";
+import {
+  formatWeiToEth,
+  parseEthToWei,
+  shortenAddress,
+  validateEthereumAddress,
+} from "./wallet-utils";
 import "./styles.css";
 
-const navItems = ["Dashboard", "Portfolio", "Deposit Funds", "Settings"];
+const navItems = [
+  { label: "Dashboard", view: "dashboard" },
+  { label: "Portfolio", view: "portfolio" },
+  { label: "Deposit Funds", view: "receive" },
+  { label: "Settings", view: "settings" },
+] as const;
 const walletStorageKey = "mywallet.passkeyWallet.v1";
+const sepoliaChainId = "11155111";
+const ethereumDerivationPath = "m/44'/60'/0'/0/0";
+const sepoliaRpcUrl =
+  import.meta.env.VITE_SEPOLIA_RPC_URL ??
+  "https://ethereum-sepolia-rpc.publicnode.com";
+const sepoliaExplorerBaseUrl = "https://sepolia.etherscan.io";
+const sepoliaFaucetUrl = "https://sepolia-faucet.pk910.de/";
 
 function getNetworks(ethereumAddress: string) {
   return [
@@ -34,6 +53,15 @@ function getNetworks(ethereumAddress: string) {
 type PasskeySupport = "checking" | "supported" | "unsupported";
 type WasmStatus = "loading" | "ready" | "failed";
 type WalletStatus = "idle" | "creating" | "created" | "failed";
+type AppView = (typeof navItems)[number]["view"] | "send";
+type BalanceStatus = "idle" | "loading" | "ready" | "failed";
+type SendStatus =
+  | "idle"
+  | "review"
+  | "signing"
+  | "broadcasting"
+  | "sent"
+  | "failed";
 
 type StoredWallet = {
   version: 1;
@@ -45,6 +73,20 @@ type StoredWallet = {
   prfSaltHex: string;
   ethereumSepoliaAddress: string;
   createdAt: string;
+};
+
+type TransactionPlan = {
+  gasLimit: bigint;
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint;
+  nonce: bigint;
+  totalCost: bigint;
+  valueWei: bigint;
+};
+
+type SignedEthTransaction = {
+  signature: string;
+  txHash: string;
 };
 
 type DerivedAccount = {
@@ -224,8 +266,8 @@ function deriveEthereumSepoliaAddress(keystoreJson: string, prfKeyHex: string) {
         derivations: [
           {
             chain: "ETHEREUM",
-            chainId: "11155111",
-            derivationPath: "m/44'/60'/0'/0/0",
+            chainId: sepoliaChainId,
+            derivationPath: ethereumDerivationPath,
             network: "TESTNET",
           },
         ],
@@ -262,6 +304,121 @@ function saveStoredWallet(wallet: StoredWallet) {
   localStorage.setItem(walletStorageKey, JSON.stringify(wallet));
 }
 
+function bigintToQuantity(value: bigint) {
+  return `0x${value.toString(16)}`;
+}
+
+async function callSepoliaRpc<T>(method: string, params: unknown[]) {
+  const response = await fetch(sepoliaRpcUrl, {
+    body: JSON.stringify({
+      id: Date.now(),
+      jsonrpc: "2.0",
+      method,
+      params,
+    }),
+    headers: {
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Sepolia RPC 请求失败：HTTP ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    error?: { message?: string };
+    result?: T;
+  };
+
+  if (data.error) {
+    throw new Error(data.error.message ?? "Sepolia RPC 返回错误。");
+  }
+
+  if (data.result === undefined || data.result === null) {
+    throw new Error("Sepolia RPC 没有返回结果。");
+  }
+
+  return data.result;
+}
+
+async function fetchSepoliaBalance(address: string) {
+  const result = await callSepoliaRpc<string>("eth_getBalance", [
+    address,
+    "latest",
+  ]);
+  return BigInt(result);
+}
+
+async function getPriorityFeePerGas() {
+  try {
+    return BigInt(await callSepoliaRpc<string>("eth_maxPriorityFeePerGas", []));
+  } catch {
+    return 1_000_000_000n;
+  }
+}
+
+async function getBaseFeePerGas() {
+  const block = await callSepoliaRpc<{ baseFeePerGas?: string }>(
+    "eth_getBlockByNumber",
+    ["latest", false],
+  );
+
+  if (!block.baseFeePerGas) {
+    return BigInt(await callSepoliaRpc<string>("eth_gasPrice", []));
+  }
+
+  return BigInt(block.baseFeePerGas);
+}
+
+async function estimateSepoliaNativeTransferGas(
+  from: string,
+  to: string,
+  valueWei: bigint,
+) {
+  try {
+    const gasLimitHex = await callSepoliaRpc<string>("eth_estimateGas", [
+      {
+        from,
+        to,
+        value: bigintToQuantity(valueWei),
+      },
+    ]);
+
+    return BigInt(gasLimitHex);
+  } catch {
+    return 21_000n;
+  }
+}
+
+async function prepareSepoliaTransfer(
+  from: string,
+  to: string,
+  valueWei: bigint,
+): Promise<TransactionPlan> {
+  const [nonceHex, gasLimit, baseFeePerGas, maxPriorityFeePerGas] =
+    await Promise.all([
+      callSepoliaRpc<string>("eth_getTransactionCount", [from, "pending"]),
+      estimateSepoliaNativeTransferGas(from, to, valueWei),
+      getBaseFeePerGas(),
+      getPriorityFeePerGas(),
+    ]);
+  const maxFeePerGas = baseFeePerGas * 2n + maxPriorityFeePerGas;
+
+  return {
+    gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    nonce: BigInt(nonceHex),
+    totalCost: valueWei + gasLimit * maxFeePerGas,
+    valueWei,
+  };
+}
+
+async function broadcastRawTransaction(rawTransaction: string) {
+  return callSepoliaRpc<string>("eth_sendRawTransaction", [rawTransaction]);
+}
+
 function App() {
   const [passkeySupport, setPasskeySupport] =
     useState<PasskeySupport>("checking");
@@ -278,9 +435,24 @@ function App() {
   );
   const [hasStoredWallet, setHasStoredWallet] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentView, setCurrentView] = useState<AppView>("dashboard");
   const [ethereumAddress, setEthereumAddress] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+  const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
+  const [balanceStatus, setBalanceStatus] = useState<BalanceStatus>("idle");
+  const [balanceMessage, setBalanceMessage] = useState(
+    "创建钱包后可以刷新 Sepolia ETH 余额。",
+  );
+  const [recipientAddress, setRecipientAddress] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sendStatus, setSendStatus] = useState<SendStatus>("idle");
+  const [sendMessage, setSendMessage] = useState(
+    "输入接收地址和数量后，可以先查看交易摘要。",
+  );
+  const [transactionPlan, setTransactionPlan] =
+    useState<TransactionPlan | null>(null);
+  const [sentTxHash, setSentTxHash] = useState("");
 
   const networks = getNetworks(ethereumAddress);
 
@@ -410,6 +582,16 @@ function App() {
     };
   }, [ethereumAddress]);
 
+  useEffect(() => {
+    if (!ethereumAddress || !isAuthenticated) {
+      setBalanceWei(null);
+      setBalanceStatus("idle");
+      return;
+    }
+
+    void refreshBalance();
+  }, [ethereumAddress, isAuthenticated]);
+
   function getAuthStatusMessage() {
     if (walletStatus === "creating" || walletStatus === "failed") {
       return walletMessage;
@@ -436,15 +618,43 @@ function App() {
 
   function handleLogout() {
     setIsAuthenticated(false);
+    setCurrentView("dashboard");
     setEthereumAddress("");
     setQrCodeUrl("");
     setCopyMessage("");
+    setBalanceWei(null);
+    setBalanceStatus("idle");
+    setTransactionPlan(null);
+    setSentTxHash("");
+    setSendStatus("idle");
     setWalletStatus("idle");
     setWalletMessage(
       hasStoredWallet
         ? "检测到本机浏览器里已有加密钱包记录，可用 Passkey 登录。"
         : "点击 Create Passkey 后，会创建加密钱包并生成 Ethereum Sepolia 地址。",
     );
+  }
+
+  async function refreshBalance() {
+    if (!ethereumAddress) {
+      return;
+    }
+
+    try {
+      setBalanceStatus("loading");
+      setBalanceMessage("正在查询 Sepolia ETH 余额。");
+      const nextBalanceWei = await fetchSepoliaBalance(ethereumAddress);
+      setBalanceWei(nextBalanceWei);
+      setBalanceStatus("ready");
+      setBalanceMessage("Sepolia ETH 余额已更新。");
+    } catch (error) {
+      setBalanceStatus("failed");
+      setBalanceMessage(
+        error instanceof Error
+          ? error.message
+          : "Sepolia ETH 余额查询失败，请稍后重试。",
+      );
+    }
   }
 
   async function handleCreatePasskeyWallet() {
@@ -501,6 +711,7 @@ function App() {
       setEthereumAddress(address);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
+      setCurrentView("dashboard");
       setWalletStatus("created");
       setWalletMessage(
         "Ethereum Sepolia 地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
@@ -546,6 +757,7 @@ function App() {
       setEthereumAddress(address);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
+      setCurrentView("dashboard");
       setWalletStatus("created");
       setWalletMessage("Passkey 解锁成功，Ethereum Sepolia 地址已恢复。");
     } catch (error) {
@@ -568,6 +780,93 @@ function App() {
       setCopyMessage("地址已复制。");
     } catch {
       setCopyMessage("复制失败，请手动选择地址。");
+    }
+  }
+
+  async function handleReviewTransfer() {
+    setSentTxHash("");
+    setTransactionPlan(null);
+
+    if (!validateEthereumAddress(recipientAddress)) {
+      setSendStatus("failed");
+      setSendMessage("请输入有效的 Ethereum 接收地址。");
+      return;
+    }
+
+    try {
+      const valueWei = parseEthToWei(sendAmount);
+      setSendStatus("review");
+      setSendMessage("正在准备交易摘要。");
+      const plan = await prepareSepoliaTransfer(
+        ethereumAddress,
+        recipientAddress.trim(),
+        valueWei,
+      );
+
+      setTransactionPlan(plan);
+      setSendStatus("review");
+      setSendMessage("请确认接收地址、金额和预估网络费。");
+    } catch (error) {
+      setSendStatus("failed");
+      setSendMessage(
+        error instanceof Error ? error.message : "交易摘要生成失败。",
+      );
+    }
+  }
+
+  async function handleConfirmTransfer() {
+    const storedWallet = loadStoredWallet();
+
+    if (!storedWallet || !transactionPlan) {
+      setSendStatus("failed");
+      setSendMessage("缺少钱包或交易摘要，请重新登录后再试。");
+      return;
+    }
+
+    try {
+      setSendStatus("signing");
+      setSendMessage("请使用 Passkey 解锁并签名交易。");
+      const prfKeyBytes = await requestPasskeyPrfKey(
+        base64UrlToArrayBuffer(storedWallet.credentialRawId),
+        hexToBytes(storedWallet.prfSaltHex),
+      );
+      const signed = JSON.parse(
+        sign_tx(
+          JSON.stringify({
+            chain: "ETHEREUM",
+            derivationPath: ethereumDerivationPath,
+            input: {
+              accessList: [],
+              chainId: sepoliaChainId,
+              data: "0x",
+              gasLimit: String(transactionPlan.gasLimit),
+              maxFeePerGas: String(transactionPlan.maxFeePerGas),
+              maxPriorityFeePerGas: String(
+                transactionPlan.maxPriorityFeePerGas,
+              ),
+              nonce: String(transactionPlan.nonce),
+              to: recipientAddress.trim(),
+              txType: "02",
+              value: String(transactionPlan.valueWei),
+            },
+            key: bytesToHex(prfKeyBytes),
+            keystoreJson: storedWallet.keystoreJson,
+          }),
+        ),
+      ) as SignedEthTransaction;
+
+      setSendStatus("broadcasting");
+      setSendMessage("签名完成，正在广播到 Ethereum Sepolia。");
+      const hash = await broadcastRawTransaction(signed.signature);
+      setSentTxHash(hash || signed.txHash);
+      setSendStatus("sent");
+      setSendMessage("交易已广播。可以在 Sepolia Etherscan 查看状态。");
+      void refreshBalance();
+    } catch (error) {
+      setSendStatus("failed");
+      setSendMessage(
+        error instanceof Error ? error.message : "转账失败，请检查余额和网络。",
+      );
     }
   }
 
@@ -643,6 +942,23 @@ function App() {
     );
   }
 
+  const balanceText = balanceWei === null ? "0" : formatWeiToEth(balanceWei);
+  const receiveAddress = ethereumAddress || "创建钱包后显示收款地址";
+  const viewTitle: Record<AppView, string> = {
+    dashboard: "Passkey 多链钱包",
+    portfolio: "Portfolio",
+    receive: "Receive",
+    send: "Send",
+    settings: "Settings",
+  };
+  const viewDescription: Record<AppView, string> = {
+    dashboard: "Ethereum Sepolia 测试钱包已解锁。当前只显示公开地址和收款入口，不展示助记词或私钥。",
+    portfolio: "查看 Sepolia ETH 测试币余额和资产状态。",
+    receive: "展示钱包地址和二维码，用于接收 Ethereum Sepolia 测试币。",
+    send: "输入接收地址和金额，Review 后使用 Passkey 签名并广播。",
+    settings: "当前 demo 只提供退出登录和安全提示。",
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="钱包导航">
@@ -659,12 +975,15 @@ function App() {
         <nav className="nav-list">
           {navItems.map((item) => (
             <button
-              className={item === "Dashboard" ? "nav-item active" : "nav-item"}
-              key={item}
+              className={
+                item.view === currentView ? "nav-item active" : "nav-item"
+              }
+              key={item.label}
+              onClick={() => setCurrentView(item.view)}
               type="button"
             >
               <span className="nav-dot" aria-hidden="true" />
-              {item}
+              {item.label}
             </button>
           ))}
         </nav>
@@ -683,11 +1002,8 @@ function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">测试网 Demo</p>
-            <h1>Passkey 多链钱包</h1>
-            <p className="page-description">
-              Ethereum Sepolia 测试钱包已解锁。当前只显示公开地址和收款入口，
-              不展示助记词或私钥。
-            </p>
+            <h1>{viewTitle[currentView]}</h1>
+            <p className="page-description">{viewDescription[currentView]}</p>
           </div>
           <button
             className="primary-button"
@@ -698,132 +1014,307 @@ function App() {
           </button>
         </header>
 
-        <section className="content-grid" aria-label="钱包概览">
-          <article className="panel balance-panel">
-            <div className="panel-label">Total Portfolio Value</div>
-            <div className="balance">$0.00</div>
-            <p className="muted-text">
-              空资产状态正常。第 7 步会接入 Sepolia ETH 余额查询。
-            </p>
-          </article>
-
-          <article className="panel">
-            <div className="panel-header">
-              <h2>Quick Actions</h2>
-              <span className="pill">占位</span>
-            </div>
-            <div className="action-grid">
-              <button type="button">Receive</button>
-              <button type="button">Send</button>
-              <button type="button">Portfolio</button>
-              <button type="button">Settings</button>
-            </div>
-          </article>
-
-          <article className="panel address-panel">
-            <div className="panel-header">
-              <h2>Ethereum Sepolia</h2>
-              <span className={`pill ${walletStatus}`}>
-                {walletStatus === "creating"
-                  ? "Creating"
-                  : walletStatus === "created"
-                    ? "Address Ready"
-                    : walletStatus === "failed"
-                      ? "Needs Retry"
-                      : "Not Created"}
-              </span>
-            </div>
-            <p className="muted-text">
-              这是公开收款地址，可以复制给自己用于测试网转入 Sepolia ETH。
-            </p>
-            <div className="address-box">
-              <span>{ethereumAddress || "创建钱包后显示 Ethereum Sepolia 地址"}</span>
+        {currentView === "dashboard" ? (
+          <section className="content-grid" aria-label="钱包概览">
+            <article className="panel balance-panel">
+              <div className="panel-label">Sepolia ETH Balance</div>
+              <div className="balance">{balanceText} ETH</div>
+              <p className="muted-text">{balanceMessage}</p>
               <button
-                disabled={!ethereumAddress}
-                onClick={copyEthereumAddress}
+                className="secondary-button compact"
+                onClick={refreshBalance}
                 type="button"
               >
-                Copy
+                Refresh Balance
               </button>
-            </div>
-            <div className={`support-message ${walletStatus}`} role="status">
-              {walletMessage}
-            </div>
-            {copyMessage ? (
-              <div className="copy-message" role="status">
-                {copyMessage}
-              </div>
-            ) : null}
-          </article>
+            </article>
 
-          <article className="panel wide">
-            <div className="panel-header">
-              <h2>Test Networks</h2>
-              <span className="pill">5 chains</span>
-            </div>
-            <div className="network-list">
-              {networks.map((network) => (
-                <div className="network-row" key={network.name}>
-                  <div className="network-avatar" aria-hidden="true">
-                    {network.name.slice(0, 1)}
-                  </div>
-                  <div>
-                    <div className="network-name">{network.name}</div>
-                    <div className="network-status">{network.status}</div>
-                  </div>
-                  <span
-                    className={
-                      network.badge === "Connected"
-                        ? "network-badge connected"
-                        : "network-badge"
-                    }
-                  >
-                    {network.badge}
-                  </span>
+            <article className="panel">
+              <div className="panel-header">
+                <h2>Quick Actions</h2>
+                <span className="pill">Sepolia</span>
+              </div>
+              <div className="action-grid">
+                <button onClick={() => setCurrentView("receive")} type="button">
+                  Receive
+                </button>
+                <button onClick={() => setCurrentView("send")} type="button">
+                  Send
+                </button>
+                <button onClick={() => setCurrentView("portfolio")} type="button">
+                  Portfolio
+                </button>
+                <button onClick={() => setCurrentView("settings")} type="button">
+                  Settings
+                </button>
+              </div>
+            </article>
+
+            <article className="panel address-panel">
+              <div className="panel-header">
+                <h2>Ethereum Sepolia</h2>
+                <span className="pill created">Address Ready</span>
+              </div>
+              <p className="muted-text">
+                公开收款地址，可用于领取或接收 Sepolia ETH。
+              </p>
+              <div className="address-box">
+                <span>{ethereumAddress}</span>
+                <button onClick={copyEthereumAddress} type="button">
+                  Copy
+                </button>
+              </div>
+              {copyMessage ? (
+                <div className="copy-message" role="status">
+                  {copyMessage}
                 </div>
-              ))}
-            </div>
-          </article>
+              ) : null}
+            </article>
 
-          <article className="panel">
-            <div className="panel-header">
-              <h2>Deposit Funds</h2>
-              <span className={`pill ${ethereumAddress ? "created" : ""}`}>
-                {ethereumAddress ? "Ready" : "Waiting"}
-              </span>
-            </div>
-            {qrCodeUrl ? (
-              <img
-                alt="Ethereum Sepolia 收款二维码"
-                className="qr-code"
-                src={qrCodeUrl}
-              />
-            ) : (
-              <div className="qr-placeholder" aria-hidden="true">
-                QR
+            <article className="panel wide">
+              <div className="panel-header">
+                <h2>Test Networks</h2>
+                <span className="pill">5 chains</span>
               </div>
-            )}
-            <p className="muted-text">扫描二维码或复制地址，向钱包转入测试币。</p>
-            <div className="deposit-address">
-              <span>{ethereumAddress || "创建钱包后显示收款地址"}</span>
+              <div className="network-list">
+                {networks.map((network) => (
+                  <div className="network-row" key={network.name}>
+                    <div className="network-avatar" aria-hidden="true">
+                      {network.name.slice(0, 1)}
+                    </div>
+                    <div>
+                      <div className="network-name">{network.name}</div>
+                      <div className="network-status">{network.status}</div>
+                    </div>
+                    <span
+                      className={
+                        network.badge === "Connected"
+                          ? "network-badge connected"
+                          : "network-badge"
+                      }
+                    >
+                      {network.badge}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </section>
+        ) : null}
+
+        {currentView === "receive" ? (
+          <section className="single-view" aria-label="收款">
+            <article className="panel receive-panel">
+              <div className="panel-header">
+                <h2>Receive Sepolia ETH</h2>
+                <span className="pill created">Ready</span>
+              </div>
+              {qrCodeUrl ? (
+                <img
+                  alt="Ethereum Sepolia 收款二维码"
+                  className="qr-code large"
+                  src={qrCodeUrl}
+                />
+              ) : null}
+              <div className="deposit-address large">
+                <span>{receiveAddress}</span>
+                <button onClick={copyEthereumAddress} type="button">
+                  Copy
+                </button>
+              </div>
+              {copyMessage ? (
+                <div className="copy-message" role="status">
+                  {copyMessage}
+                </div>
+              ) : null}
+              <div className="deposit-warning" role="note">
+                只发送 Ethereum Sepolia 测试网 ETH 到这个地址。发送其他网络或资产可能无法找回。
+              </div>
+              <div className="faucet-row">
+                <div>
+                  <div className="network-name">领取 Sepolia ETH 测试币</div>
+                  <p className="muted-text">
+                    第三方 faucet 会打开新页面，把上面的地址填进去领取测试币。
+                  </p>
+                </div>
+                <a
+                  className="link-button"
+                  href={sepoliaFaucetUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open Faucet
+                </a>
+              </div>
+            </article>
+          </section>
+        ) : null}
+
+        {currentView === "portfolio" ? (
+          <section className="single-view" aria-label="资产">
+            <article className="panel">
+              <div className="panel-header">
+                <h2>Assets</h2>
+                <span className={`pill ${balanceStatus}`}>
+                  {balanceStatus === "loading"
+                    ? "Loading"
+                    : balanceStatus === "ready"
+                      ? "Updated"
+                      : balanceStatus === "failed"
+                        ? "RPC Error"
+                        : "Waiting"}
+                </span>
+              </div>
+              <div className="asset-row">
+                <div className="network-avatar" aria-hidden="true">
+                  E
+                </div>
+                <div>
+                  <div className="network-name">Sepolia ETH</div>
+                  <div className="network-status">
+                    Ethereum Sepolia 原生测试币
+                  </div>
+                </div>
+                <strong>{balanceText} ETH</strong>
+              </div>
+              <p className="muted-text">{balanceMessage}</p>
               <button
-                disabled={!ethereumAddress}
-                onClick={copyEthereumAddress}
+                className="secondary-button compact"
+                onClick={refreshBalance}
                 type="button"
               >
-                Copy
+                Refresh Balance
               </button>
-            </div>
-            <div className="deposit-warning" role="note">
-              只发送 Ethereum Sepolia 测试网 ETH 到这个地址。发送其他网络或资产可能无法找回。
-            </div>
-            {copyMessage ? (
-              <div className="copy-message" role="status">
-                {copyMessage}
+            </article>
+          </section>
+        ) : null}
+
+        {currentView === "send" ? (
+          <section className="single-view" aria-label="转账">
+            <article className="panel send-panel">
+              <div className="panel-header">
+                <h2>Send Sepolia ETH</h2>
+                <span className={`pill ${sendStatus}`}>
+                  {sendStatus === "sent"
+                    ? "Broadcasted"
+                    : sendStatus === "failed"
+                      ? "Needs Review"
+                      : sendStatus === "signing" ||
+                          sendStatus === "broadcasting"
+                        ? "Processing"
+                        : "Draft"}
+                </span>
               </div>
-            ) : null}
-          </article>
-        </section>
+              <div className="form-grid">
+                <label>
+                  接收地址
+                  <input
+                    onChange={(event) => setRecipientAddress(event.target.value)}
+                    placeholder="0x..."
+                    value={recipientAddress}
+                  />
+                </label>
+                <label>
+                  金额
+                  <input
+                    inputMode="decimal"
+                    onChange={(event) => setSendAmount(event.target.value)}
+                    placeholder="0.001"
+                    value={sendAmount}
+                  />
+                </label>
+              </div>
+              <button
+                className="primary-button form-action"
+                disabled={sendStatus === "signing" || sendStatus === "broadcasting"}
+                onClick={handleReviewTransfer}
+                type="button"
+              >
+                Review Transfer
+              </button>
+
+              {transactionPlan ? (
+                <div className="review-box">
+                  <h3>Review</h3>
+                  <dl>
+                    <div>
+                      <dt>From</dt>
+                      <dd>{shortenAddress(ethereumAddress)}</dd>
+                    </div>
+                    <div>
+                      <dt>To</dt>
+                      <dd>{shortenAddress(recipientAddress.trim())}</dd>
+                    </div>
+                    <div>
+                      <dt>Amount</dt>
+                      <dd>{formatWeiToEth(transactionPlan.valueWei)} ETH</dd>
+                    </div>
+                    <div>
+                      <dt>Estimated fee</dt>
+                      <dd>
+                        {formatWeiToEth(
+                          transactionPlan.gasLimit * transactionPlan.maxFeePerGas,
+                        )}{" "}
+                        ETH
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Total max cost</dt>
+                      <dd>{formatWeiToEth(transactionPlan.totalCost)} ETH</dd>
+                    </div>
+                  </dl>
+                  <button
+                    className="primary-button form-action"
+                    disabled={
+                      sendStatus === "signing" ||
+                      sendStatus === "broadcasting" ||
+                      sendStatus === "sent"
+                    }
+                    onClick={handleConfirmTransfer}
+                    type="button"
+                  >
+                    Sign with Passkey & Send
+                  </button>
+                </div>
+              ) : null}
+
+              <div className={`support-message ${sendStatus}`} role="status">
+                {sendMessage}
+              </div>
+              {sentTxHash ? (
+                <a
+                  className="explorer-link"
+                  href={`${sepoliaExplorerBaseUrl}/tx/${sentTxHash}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  View transaction on Sepolia Etherscan
+                </a>
+              ) : null}
+            </article>
+          </section>
+        ) : null}
+
+        {currentView === "settings" ? (
+          <section className="single-view" aria-label="设置">
+            <article className="panel">
+              <div className="panel-header">
+                <h2>Settings</h2>
+                <span className="pill">Demo</span>
+              </div>
+              <p className="muted-text">
+                当前 demo 的加密钱包记录只保存在本机浏览器。请只在测试网使用。
+              </p>
+              <button
+                className="primary-button form-action"
+                onClick={handleLogout}
+                type="button"
+              >
+                Log Out
+              </button>
+            </article>
+          </section>
+        ) : null}
 
       </main>
     </div>
