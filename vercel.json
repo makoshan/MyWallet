@@ -1,6 +1,16 @@
 {
   "redirects": [
     {
+      "source": "/MyWallet",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/MyWallet/",
+      "destination": "/",
+      "permanent": false
+    },
+    {
       "source": "/MyWallet/:path*",
       "destination": "/:path*",
       "permanent": false
