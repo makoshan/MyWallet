@@ -62,41 +62,6 @@ const tronRpcUrl =
   "https://api.trongrid.io";
 const ethereumExplorerBaseUrl = "https://etherscan.io";
 
-function getNetworks(
-  ethereumAddress: string,
-  bitcoinAddress: string,
-  solanaAddress: string,
-  tronAddress: string,
-) {
-  return [
-    {
-      name: "Ethereum",
-      status: ethereumAddress ? "地址已生成" : "等待创建",
-      badge: ethereumAddress ? "Connected" : "Not connected",
-    },
-    {
-      name: "BSC",
-      status: ethereumAddress ? "复用 EVM 地址" : "等待创建",
-      badge: ethereumAddress ? "Connected" : "Not connected",
-    },
-    {
-      name: "Bitcoin",
-      status: bitcoinAddress ? "地址已生成" : "等待创建",
-      badge: bitcoinAddress ? "Connected" : "Not connected",
-    },
-    {
-      name: "Solana",
-      status: solanaAddress ? "地址已生成" : "等待创建",
-      badge: solanaAddress ? "Connected" : "Not connected",
-    },
-    {
-      name: "TRON",
-      status: tronAddress ? "地址已生成" : "等待创建",
-      badge: tronAddress ? "Connected" : "Not connected",
-    },
-  ];
-}
-
 type PasskeySupport = "checking" | "supported" | "unsupported";
 type WasmStatus = "loading" | "ready" | "failed";
 type WalletStatus = "idle" | "creating" | "created" | "failed";
@@ -737,12 +702,6 @@ function App() {
     useState(false);
   const [exportedMnemonic, setExportedMnemonic] = useState("");
 
-  const networks = getNetworks(
-    ethereumAddress,
-    bitcoinAddress,
-    solanaAddress,
-    tronAddress,
-  );
   const receiveNetworks = buildReceiveNetworks({
     bitcoinAddress,
     ethereumAddress,
@@ -1526,35 +1485,6 @@ function App() {
                 <button onClick={() => navigateToView("settings")} type="button">
                   Settings
                 </button>
-              </div>
-            </article>
-
-            <article className="panel wide">
-              <div className="panel-header">
-                <h2>Main Networks</h2>
-                <span className="pill">5 chains</span>
-              </div>
-              <div className="network-list">
-                {networks.map((network) => (
-                  <div className="network-row" key={network.name}>
-                    <div className="network-avatar" aria-hidden="true">
-                      {network.name.slice(0, 1)}
-                    </div>
-                    <div>
-                      <div className="network-name">{network.name}</div>
-                      <div className="network-status">{network.status}</div>
-                    </div>
-                    <span
-                      className={
-                        network.badge === "Connected"
-                          ? "network-badge connected"
-                          : "network-badge"
-                      }
-                    >
-                      {network.badge}
-                    </span>
-                  </div>
-                ))}
               </div>
             </article>
           </section>
