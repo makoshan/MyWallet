@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildReceiveNetworks,
   formatWeiToEth,
+  getMnemonicBackupWarnings,
   getPathForView,
   getViewFromPath,
   parseEthToWei,
@@ -78,5 +79,13 @@ describe("wallet utils", () => {
     expect(networks.every((network) => !network.name.includes("Testnet"))).toBe(
       true,
     );
+  });
+
+  it("keeps mnemonic backup warnings explicit and offline-only", () => {
+    const warnings = getMnemonicBackupWarnings();
+
+    expect(warnings).toContain("只手抄到纸上，不要截图、拍照或复制到剪贴板。");
+    expect(warnings).toContain("不要保存到网盘、聊天软件、邮箱、备忘录或任何联网服务。");
+    expect(warnings).toContain("任何人拿到助记词都可以转走你的资产。");
   });
 });

@@ -22,6 +22,16 @@ export type ReceiveAddresses = {
   tronAddress: string;
 };
 
+export function getMnemonicBackupWarnings() {
+  return [
+    "只手抄到纸上，不要截图、拍照或复制到剪贴板。",
+    "不要保存到网盘、聊天软件、邮箱、备忘录或任何联网服务。",
+    "不要发给任何人，也不要发给 AI、客服或社群管理员。",
+    "任何人拿到助记词都可以转走你的资产。",
+    "确认纸质备份清楚、完整，再关闭页面。",
+  ];
+}
+
 export function formatWeiToEth(wei: bigint) {
   const whole = wei / weiBase;
   const fraction = (wei % weiBase).toString().padStart(ethDecimals, "0");

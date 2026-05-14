@@ -3,6 +3,7 @@ import { StrictMode, useEffect, useState } from "react";
 import initTokenCoreWasm, {
   create_keystore,
   derive_accounts,
+  export_mnemonic,
   sign_tx,
 } from "@consenlabs/tcx-wasm";
 import tokenCoreWasmUrl from "@consenlabs/tcx-wasm/tcx_wasm_bg.wasm?url";
@@ -20,6 +21,7 @@ import { WalletContractV4 } from "@ton/ton";
 import {
   buildReceiveNetworks,
   formatWeiToEth,
+  getMnemonicBackupWarnings,
   getPathForView,
   getViewFromPath,
   parseEthToWei,
@@ -95,6 +97,7 @@ type SendStatus =
   | "broadcasting"
   | "sent"
   | "failed";
+type MnemonicExportStatus = "idle" | "signing" | "revealed" | "failed";
 
 type StoredWallet = {
   version: 2;
@@ -123,6 +126,10 @@ type TransactionPlan = {
 type SignedEthTransaction = {
   signature: string;
   txHash: string;
+};
+
+type ExportedMnemonic = {
+  mnemonic?: string;
 };
 
 type DerivedAccount = {
@@ -611,6 +618,14 @@ function App() {
     useState<ReceiveNetworkId>("ethereum");
   const [isReceiveNetworkMenuOpen, setIsReceiveNetworkMenuOpen] =
     useState(false);
+  const [mnemonicExportStatus, setMnemonicExportStatus] =
+    useState<MnemonicExportStatus>("idle");
+  const [mnemonicExportMessage, setMnemonicExportMessage] = useState(
+    "导出助记词前必须先阅读安全提醒，并用 Passkey 解锁签名。",
+  );
+  const [hasAcceptedMnemonicWarning, setHasAcceptedMnemonicWarning] =
+    useState(false);
+  const [exportedMnemonic, setExportedMnemonic] = useState("");
 
   const networks = getNetworks(
     ethereumAddress,
@@ -627,6 +642,8 @@ function App() {
   const selectedReceiveNetwork =
     receiveNetworks.find((network) => network.id === selectedReceiveNetworkId) ??
     receiveNetworks[0];
+  const mnemonicBackupWarnings = getMnemonicBackupWarnings();
+  const mnemonicWords = exportedMnemonic ? exportedMnemonic.split(/\s+/) : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -779,6 +796,17 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (currentView !== "settings") {
+      setExportedMnemonic("");
+      setMnemonicExportStatus("idle");
+      setMnemonicExportMessage(
+        "导出助记词前必须先阅读安全提醒，并用 Passkey 解锁签名。",
+      );
+      setHasAcceptedMnemonicWarning(false);
+    }
+  }, [currentView]);
+
   function navigateToView(view: AppView) {
     setCurrentView(view);
     const nextPath = getPathForView(view);
@@ -827,6 +855,9 @@ function App() {
     setTransactionPlan(null);
     setSentTxHash("");
     setSendStatus("idle");
+    setExportedMnemonic("");
+    setMnemonicExportStatus("idle");
+    setHasAcceptedMnemonicWarning(false);
     setWalletStatus("idle");
     setWalletMessage(
       hasStoredWallet
@@ -1092,6 +1123,65 @@ function App() {
         error instanceof Error ? error.message : "转账失败，请检查余额和网络。",
       );
     }
+  }
+
+  async function handleExportMnemonic() {
+    const storedWallet = loadStoredWallet();
+
+    if (!storedWallet) {
+      setMnemonicExportStatus("failed");
+      setMnemonicExportMessage("当前浏览器没有已保存的钱包记录，请先创建或登录钱包。");
+      return;
+    }
+
+    if (!hasAcceptedMnemonicWarning) {
+      setMnemonicExportStatus("failed");
+      setMnemonicExportMessage("请先确认你理解助记词只能手抄离线保存。");
+      return;
+    }
+
+    try {
+      setExportedMnemonic("");
+      setMnemonicExportStatus("signing");
+      setMnemonicExportMessage("请使用 Passkey 解锁签名，确认是你本人在导出助记词。");
+      const prfKeyBytes = await requestPasskeyPrfKey(
+        base64UrlToArrayBuffer(storedWallet.credentialRawId),
+        hexToBytes(storedWallet.prfSaltHex),
+      );
+      const result = JSON.parse(
+        export_mnemonic(
+          JSON.stringify({
+            key: bytesToHex(prfKeyBytes),
+            keystoreJson: storedWallet.keystoreJson,
+          }),
+        ),
+      ) as ExportedMnemonic;
+
+      if (!result.mnemonic) {
+        throw new Error("Token Core 没有返回助记词。");
+      }
+
+      setExportedMnemonic(result.mnemonic);
+      setMnemonicExportStatus("revealed");
+      setMnemonicExportMessage(
+        "助记词已临时显示在页面上。请只手抄到纸上，完成后点击隐藏。",
+      );
+    } catch (error) {
+      setExportedMnemonic("");
+      setMnemonicExportStatus("failed");
+      setMnemonicExportMessage(
+        error instanceof Error ? error.message : "导出助记词失败，请稍后重试。",
+      );
+    }
+  }
+
+  function hideExportedMnemonic() {
+    setExportedMnemonic("");
+    setMnemonicExportStatus("idle");
+    setMnemonicExportMessage(
+      "助记词已隐藏。需要再次查看时，必须重新用 Passkey 解锁签名。",
+    );
+    setHasAcceptedMnemonicWarning(false);
   }
 
   if (!isAuthenticated) {
@@ -1577,7 +1667,7 @@ function App() {
 
         {currentView === "settings" ? (
           <section className="single-view" aria-label="设置">
-            <article className="panel">
+            <article className="panel settings-panel">
               <div className="panel-header">
                 <h2>Settings</h2>
                 <span className="pill">Demo</span>
@@ -1585,6 +1675,70 @@ function App() {
               <p className="muted-text">
                 当前 demo 的加密钱包记录只保存在本机浏览器。主网操作请先小额测试，并做好助记词备份。
               </p>
+
+              <div className="mnemonic-backup-box">
+                <div className="panel-header">
+                  <h3>导出助记词备份</h3>
+                  <span className="pill unsupported">Sensitive</span>
+                </div>
+                <p className="muted-text">
+                  导出前必须用 Passkey 解锁签名。助记词只会临时显示在当前页面，不会上传网络，也不会保存到服务器。
+                </p>
+                <ul className="warning-list">
+                  {mnemonicBackupWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+                <label className="checkbox-row">
+                  <input
+                    checked={hasAcceptedMnemonicWarning}
+                    onChange={(event) =>
+                      setHasAcceptedMnemonicWarning(event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                  <span>我确认只手抄纸质备份，不截图、不复制、不上传网络。</span>
+                </label>
+                <button
+                  className="primary-button form-action"
+                  disabled={
+                    !hasAcceptedMnemonicWarning ||
+                    mnemonicExportStatus === "signing"
+                  }
+                  onClick={handleExportMnemonic}
+                  type="button"
+                >
+                  {mnemonicExportStatus === "signing"
+                    ? "Unlocking with Passkey..."
+                    : "Export Mnemonic with Passkey"}
+                </button>
+                <div
+                  className={`support-message ${mnemonicExportStatus}`}
+                  role="status"
+                >
+                  {mnemonicExportMessage}
+                </div>
+                {mnemonicWords.length > 0 ? (
+                  <div className="mnemonic-reveal" aria-label="助记词">
+                    <ol>
+                      {mnemonicWords.map((word, index) => (
+                        <li key={`${word}-${index}`}>
+                          <span>{index + 1}</span>
+                          <strong>{word}</strong>
+                        </li>
+                      ))}
+                    </ol>
+                    <button
+                      className="secondary-button compact"
+                      onClick={hideExportedMnemonic}
+                      type="button"
+                    >
+                      Hide Mnemonic
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
               <button
                 className="primary-button form-action"
                 onClick={handleLogout}
