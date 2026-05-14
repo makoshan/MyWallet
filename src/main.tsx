@@ -1119,27 +1119,6 @@ function App() {
               </div>
             </article>
 
-            <article className="panel address-panel">
-              <div className="panel-header">
-                <h2>Ethereum Sepolia</h2>
-                <span className="pill created">Address Ready</span>
-              </div>
-              <p className="muted-text">
-                公开收款地址，可用于领取或接收 Sepolia ETH。
-              </p>
-              <div className="address-box">
-                <span>{ethereumAddress}</span>
-                <button onClick={copyEthereumAddress} type="button">
-                  Copy
-                </button>
-              </div>
-              {copyMessage ? (
-                <div className="copy-message" role="status">
-                  {copyMessage}
-                </div>
-              ) : null}
-            </article>
-
             <article className="panel wide">
               <div className="panel-header">
                 <h2>Test Networks</h2>
