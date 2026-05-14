@@ -1,3 +1,4 @@
+import "./buffer-polyfill";
 import { StrictMode, useEffect, useState } from "react";
 import initTokenCoreWasm, {
   create_keystore,
