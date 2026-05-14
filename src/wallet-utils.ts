@@ -2,7 +2,7 @@ const ethDecimals = 18;
 const weiBase = 10n ** BigInt(ethDecimals);
 const appBasePath = "/MyWallet";
 
-export type WalletView = "dashboard" | "portfolio" | "receive" | "send" | "settings";
+export type WalletView = "dashboard" | "receive" | "send" | "settings";
 export type ReceiveNetworkId =
   | "ethereum"
   | "bsc"
@@ -124,10 +124,6 @@ export function getViewFromPath(pathname: string): WalletView {
   const route = normalizedPath.startsWith(appBasePath)
     ? normalizedPath.slice(appBasePath.length)
     : normalizedPath;
-
-  if (route === "/portfolio") {
-    return "portfolio";
-  }
 
   if (route === "/receive") {
     return "receive";

@@ -52,6 +52,7 @@ describe("wallet utils", () => {
   it("maps receive route to receive view", () => {
     expect(getViewFromPath("/MyWallet/receive")).toBe("receive");
     expect(getViewFromPath("/MyWallet/")).toBe("dashboard");
+    expect(getViewFromPath("/MyWallet/portfolio")).toBe("dashboard");
     expect(getViewFromPath("/MyWallet/unknown")).toBe("dashboard");
   });
 

@@ -37,7 +37,6 @@ import "./styles.css";
 
 const navItems = [
   { label: "Dashboard", view: "dashboard" },
-  { label: "Portfolio", view: "portfolio" },
   { label: "Deposit Funds", view: "receive" },
   { label: "Settings", view: "settings" },
 ] as const;
@@ -1362,14 +1361,12 @@ function App() {
     selectedReceiveNetwork.address || `${selectedReceiveNetwork.name} 地址后续接入`;
   const viewTitle: Record<AppView, string> = {
     dashboard: "Passkey 多链钱包",
-    portfolio: "Portfolio",
     receive: "Deposit Funds",
     send: "Send",
     settings: "Settings",
   };
   const viewDescription: Record<AppView, string> = {
     dashboard: "五链主网钱包已解锁。当前只显示公开地址和收款入口，不展示助记词或私钥。",
-    portfolio: "查看 Ethereum 主网 ETH 余额和资产状态。",
     receive: "Receive crypto to your wallet",
     send: "输入接收地址和金额，Review 后使用 Passkey 签名并广播到 Ethereum 主网。",
     settings: "当前 demo 只提供退出登录和安全提示。",
@@ -1485,9 +1482,6 @@ function App() {
                 </button>
                 <button onClick={() => navigateToView("send")} type="button">
                   Send
-                </button>
-                <button onClick={() => navigateToView("portfolio")} type="button">
-                  Portfolio
                 </button>
                 <button onClick={() => navigateToView("settings")} type="button">
                   Settings
@@ -1646,49 +1640,6 @@ function App() {
                   </p>
                 </div>
               </div>
-            </article>
-          </section>
-        ) : null}
-
-        {currentView === "portfolio" ? (
-          <section className="single-view" aria-label="资产">
-            <article className="panel">
-              <div className="panel-header">
-                <h2>Assets</h2>
-                <span className={`pill ${balanceStatus}`}>
-                  {balanceStatus === "loading"
-                    ? "Loading"
-                    : balanceStatus === "ready"
-                      ? "Updated"
-                      : balanceStatus === "failed"
-                        ? "RPC Error"
-                        : "Waiting"}
-                </span>
-              </div>
-              <div className="asset-list compact">
-                {assetBalances.map((asset) => (
-                  <div className="asset-row" key={asset.id}>
-                    <div className="network-avatar" aria-hidden="true">
-                      {asset.symbol.slice(0, 1)}
-                    </div>
-                    <div>
-                      <div className="network-name">{asset.symbol}</div>
-                      <div className="network-status">{asset.name} 主网原生币</div>
-                    </div>
-                    <strong>
-                      {asset.balance} {asset.symbol}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-              <p className="muted-text">{balanceMessage}</p>
-              <button
-                className="secondary-button compact"
-                onClick={refreshBalances}
-                type="button"
-              >
-                Refresh Balances
-              </button>
             </article>
           </section>
         ) : null}
