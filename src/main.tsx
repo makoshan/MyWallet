@@ -14,19 +14,22 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import QRCode from "qrcode";
-import { Buffer } from "buffer";
 import { createRoot } from "react-dom/client";
-import { keyPairFromSeed } from "@ton/crypto";
-import { WalletContractV4 } from "@ton/ton";
+import { Keypair } from "@solana/web3.js";
+import { mnemonicToSeedSync } from "bip39";
+import { derivePath } from "ed25519-hd-key";
 import {
   buildReceiveNetworks,
+  formatLamportsToSol,
   formatWeiToEth,
+  getDefaultAssetBalances,
   getMnemonicBackupWarnings,
   getPathForView,
   getViewFromPath,
   parseEthToWei,
   shortenAddress,
   validateEthereumAddress,
+  type AssetBalance,
   type WalletView,
   type ReceiveNetworkId,
 } from "./wallet-utils";
@@ -44,17 +47,23 @@ const ethereumChainIdHex = "0x1";
 const ethereumDerivationPath = "m/44'/60'/0'/0/0";
 const bitcoinDerivationPath = "m/84'/0'/0'/0/0";
 const tronDerivationPath = "m/44'/195'/0'/0/0";
-const tonDerivationLabel = "MyWallet TON Mainnet v1 m/44'/607'/0'";
+const solanaDerivationPath = "m/44'/501'/0'/0'";
 const ethereumRpcUrl =
-  import.meta.env.VITE_ETHEREUM_RPC_URL ??
+  import.meta.env.VITE_ETHEREUM_RPC_URL ||
   "https://ethereum-rpc.publicnode.com";
+const bscRpcUrl =
+  import.meta.env.VITE_BSC_RPC_URL ||
+  "https://bsc-rpc.publicnode.com";
+const solanaRpcUrl =
+  import.meta.env.VITE_SOLANA_RPC_URL ||
+  "https://api.mainnet-beta.solana.com";
 const ethereumExplorerBaseUrl = "https://etherscan.io";
 
 function getNetworks(
   ethereumAddress: string,
   bitcoinAddress: string,
+  solanaAddress: string,
   tronAddress: string,
-  tonAddress: string,
 ) {
   return [
     {
@@ -73,9 +82,9 @@ function getNetworks(
       badge: bitcoinAddress ? "Connected" : "Not connected",
     },
     {
-      name: "TON",
-      status: tonAddress ? "地址已生成" : "等待创建",
-      badge: tonAddress ? "Connected" : "Not connected",
+      name: "Solana",
+      status: solanaAddress ? "地址已生成" : "等待创建",
+      badge: solanaAddress ? "Connected" : "Not connected",
     },
     {
       name: "TRON",
@@ -109,7 +118,7 @@ type StoredWallet = {
   prfSaltHex: string;
   bitcoinAddress: string;
   ethereumAddress: string;
-  tonAddress: string;
+  solanaAddress: string;
   tronAddress: string;
   createdAt: string;
 };
@@ -306,7 +315,7 @@ async function createPasskeyCredential(userIdBytes: Uint8Array<ArrayBuffer>) {
 type DerivedWalletAddresses = {
   bitcoinAddress: string;
   ethereumAddress: string;
-  tonAddress: string;
+  solanaAddress: string;
   tronAddress: string;
 };
 
@@ -371,50 +380,45 @@ function deriveTokenCoreMainnetAddresses(
   };
 }
 
-async function deriveTonMainnetAddress(prfKeyBytes: Uint8Array) {
-  const prfKeyCopy = new Uint8Array(new ArrayBuffer(prfKeyBytes.byteLength));
-  prfKeyCopy.set(prfKeyBytes);
-  const hmacKey = await crypto.subtle.importKey(
-    "raw",
-    prfKeyCopy,
-    {
-      hash: "SHA-256",
-      name: "HMAC",
-    },
-    false,
-    ["sign"],
-  );
-  const seedBuffer = await crypto.subtle.sign(
-    "HMAC",
-    hmacKey,
-    new TextEncoder().encode(tonDerivationLabel),
-  );
-  const seed = new Uint8Array(seedBuffer).slice(0, 32);
-  const keyPair = keyPairFromSeed(Buffer.from(seed));
-  const wallet = WalletContractV4.create({
-    publicKey: keyPair.publicKey,
-    workchain: 0,
-  });
+function exportWalletMnemonic(keystoreJson: string, prfKeyHex: string) {
+  const result = JSON.parse(
+    export_mnemonic(
+      JSON.stringify({
+        key: prfKeyHex,
+        keystoreJson,
+      }),
+    ),
+  ) as ExportedMnemonic;
 
-  return wallet.address.toString({
-    bounceable: false,
-  });
+  if (!result.mnemonic) {
+    throw new Error("Token Core 没有返回助记词。");
+  }
+
+  return result.mnemonic;
 }
 
-async function deriveWalletAddresses(
+function deriveSolanaAddressFromMnemonic(mnemonic: string) {
+  const seed = mnemonicToSeedSync(mnemonic);
+  const derivedSeed = derivePath(solanaDerivationPath, seed.toString("hex")).key;
+
+  return Keypair.fromSeed(derivedSeed).publicKey.toBase58();
+}
+
+function deriveWalletAddresses(
   keystoreJson: string,
   prfKeyBytes: Uint8Array,
-): Promise<DerivedWalletAddresses> {
+): DerivedWalletAddresses {
   const prfKeyHex = bytesToHex(prfKeyBytes);
   const tokenCoreAddresses = deriveTokenCoreMainnetAddresses(
     keystoreJson,
     prfKeyHex,
   );
-  const tonAddress = await deriveTonMainnetAddress(prfKeyBytes);
+  const mnemonic = exportWalletMnemonic(keystoreJson, prfKeyHex);
+  const solanaAddress = deriveSolanaAddressFromMnemonic(mnemonic);
 
   return {
     ...tokenCoreAddresses,
-    tonAddress,
+    solanaAddress,
   };
 }
 
@@ -440,16 +444,35 @@ function bigintToQuantity(value: bigint) {
   return `0x${value.toString(16)}`;
 }
 
-async function callEthereumRpc<T>(
+type EvmRpcConfig = {
+  chainIdHex: string;
+  name: string;
+  url: string;
+};
+
+const ethereumRpcConfig: EvmRpcConfig = {
+  chainIdHex: ethereumChainIdHex,
+  name: "Ethereum",
+  url: ethereumRpcUrl,
+};
+const bscRpcConfig: EvmRpcConfig = {
+  chainIdHex: "0x38",
+  name: "BSC",
+  url: bscRpcUrl,
+};
+const evmRpcNetworkChecks = new Map<string, Promise<void>>();
+
+async function callEvmRpc<T>(
+  config: EvmRpcConfig,
   method: string,
   params: unknown[],
   options: { skipNetworkCheck?: boolean } = {},
 ) {
   if (!options.skipNetworkCheck && method !== "eth_chainId") {
-    await ensureEthereumRpcNetwork();
+    await ensureEvmRpcNetwork(config);
   }
 
-  const response = await fetch(ethereumRpcUrl, {
+  const response = await fetch(config.url, {
     body: JSON.stringify({
       id: Date.now(),
       jsonrpc: "2.0",
@@ -463,7 +486,7 @@ async function callEthereumRpc<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`Ethereum RPC 请求失败：HTTP ${response.status}`);
+    throw new Error(`${config.name} RPC 请求失败：HTTP ${response.status}`);
   }
 
   const data = (await response.json()) as {
@@ -472,38 +495,94 @@ async function callEthereumRpc<T>(
   };
 
   if (data.error) {
-    throw new Error(data.error.message ?? "Ethereum RPC 返回错误。");
+    throw new Error(data.error.message ?? `${config.name} RPC 返回错误。`);
   }
 
   if (data.result === undefined || data.result === null) {
-    throw new Error("Ethereum RPC 没有返回结果。");
+    throw new Error(`${config.name} RPC 没有返回结果。`);
   }
 
   return data.result;
 }
 
-let ethereumRpcNetworkCheck: Promise<void> | null = null;
+function callEthereumRpc<T>(
+  method: string,
+  params: unknown[],
+  options: { skipNetworkCheck?: boolean } = {},
+) {
+  return callEvmRpc<T>(ethereumRpcConfig, method, params, options);
+}
 
-async function ensureEthereumRpcNetwork() {
-  ethereumRpcNetworkCheck ??= callEthereumRpc<string>("eth_chainId", [], {
+async function ensureEvmRpcNetwork(config: EvmRpcConfig) {
+  const cachedCheck =
+    evmRpcNetworkChecks.get(config.name) ??
+    callEvmRpc<string>(config, "eth_chainId", [], {
     skipNetworkCheck: true,
   }).then((chainId) => {
-    if (chainId.toLowerCase() !== ethereumChainIdHex) {
+    if (chainId.toLowerCase() !== config.chainIdHex) {
       throw new Error(
-        "当前 RPC 不是 Ethereum 主网。请检查 VITE_ETHEREUM_RPC_URL。",
+        `当前 RPC 不是 ${config.name} 主网。请检查对应的 VITE RPC 配置。`,
       );
     }
   });
 
-  return ethereumRpcNetworkCheck;
+  evmRpcNetworkChecks.set(config.name, cachedCheck);
+
+  return cachedCheck;
 }
 
-async function fetchEthereumBalance(address: string) {
-  const result = await callEthereumRpc<string>("eth_getBalance", [
+async function fetchEvmBalance(config: EvmRpcConfig, address: string) {
+  const result = await callEvmRpc<string>(config, "eth_getBalance", [
     address,
     "latest",
   ]);
   return BigInt(result);
+}
+
+async function fetchEthereumBalance(address: string) {
+  return fetchEvmBalance(ethereumRpcConfig, address);
+}
+
+async function callSolanaRpc<T>(method: string, params: unknown[]) {
+  const response = await fetch(solanaRpcUrl, {
+    body: JSON.stringify({
+      id: Date.now(),
+      jsonrpc: "2.0",
+      method,
+      params,
+    }),
+    headers: {
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Solana RPC 请求失败：HTTP ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    error?: { message?: string };
+    result?: T;
+  };
+
+  if (data.error) {
+    throw new Error(data.error.message ?? "Solana RPC 返回错误。");
+  }
+
+  if (data.result === undefined || data.result === null) {
+    throw new Error("Solana RPC 没有返回结果。");
+  }
+
+  return data.result;
+}
+
+async function fetchSolanaBalance(address: string) {
+  const result = await callSolanaRpc<{ value: number }>("getBalance", [
+    address,
+  ]);
+
+  return BigInt(result.value);
 }
 
 async function getPriorityFeePerGas() {
@@ -596,14 +675,16 @@ function App() {
   );
   const [ethereumAddress, setEthereumAddress] = useState("");
   const [bitcoinAddress, setBitcoinAddress] = useState("");
+  const [solanaAddress, setSolanaAddress] = useState("");
   const [tronAddress, setTronAddress] = useState("");
-  const [tonAddress, setTonAddress] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
-  const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
+  const [assetBalances, setAssetBalances] = useState<AssetBalance[]>(() =>
+    getDefaultAssetBalances(),
+  );
   const [balanceStatus, setBalanceStatus] = useState<BalanceStatus>("idle");
   const [balanceMessage, setBalanceMessage] = useState(
-    "创建钱包后可以刷新 Ethereum 主网 ETH 余额。",
+    "创建钱包后可以刷新五条主网原生币余额。BTC 和 TRON 暂时默认显示 0。",
   );
   const [recipientAddress, setRecipientAddress] = useState("");
   const [sendAmount, setSendAmount] = useState("");
@@ -630,13 +711,13 @@ function App() {
   const networks = getNetworks(
     ethereumAddress,
     bitcoinAddress,
+    solanaAddress,
     tronAddress,
-    tonAddress,
   );
   const receiveNetworks = buildReceiveNetworks({
     bitcoinAddress,
     ethereumAddress,
-    tonAddress,
+    solanaAddress,
     tronAddress,
   });
   const selectedReceiveNetwork =
@@ -776,13 +857,13 @@ function App() {
 
   useEffect(() => {
     if (!ethereumAddress || !isAuthenticated) {
-      setBalanceWei(null);
+      setAssetBalances(getDefaultAssetBalances());
       setBalanceStatus("idle");
       return;
     }
 
-    void refreshBalance();
-  }, [ethereumAddress, isAuthenticated]);
+    void refreshBalances();
+  }, [ethereumAddress, isAuthenticated, solanaAddress]);
 
   useEffect(() => {
     function handlePopState() {
@@ -845,12 +926,12 @@ function App() {
     navigateToView("dashboard");
     setEthereumAddress("");
     setBitcoinAddress("");
+    setSolanaAddress("");
     setTronAddress("");
-    setTonAddress("");
     setSelectedReceiveNetworkId("ethereum");
     setQrCodeUrl("");
     setCopyMessage("");
-    setBalanceWei(null);
+    setAssetBalances(getDefaultAssetBalances());
     setBalanceStatus("idle");
     setTransactionPlan(null);
     setSentTxHash("");
@@ -866,26 +947,55 @@ function App() {
     );
   }
 
-  async function refreshBalance() {
+  async function refreshBalances() {
     if (!ethereumAddress) {
       return;
     }
 
-    try {
-      setBalanceStatus("loading");
-      setBalanceMessage("正在查询 Ethereum 主网 ETH 余额。");
-      const nextBalanceWei = await fetchEthereumBalance(ethereumAddress);
-      setBalanceWei(nextBalanceWei);
-      setBalanceStatus("ready");
-      setBalanceMessage("Ethereum 主网 ETH 余额已更新。");
-    } catch (error) {
-      setBalanceStatus("failed");
-      setBalanceMessage(
-        error instanceof Error
-          ? error.message
-          : "Ethereum 主网 ETH 余额查询失败，请稍后重试。",
-      );
-    }
+    setBalanceStatus("loading");
+    setBalanceMessage("正在查询 Ethereum、BSC 和 Solana 主网余额。");
+
+    const [ethereumResult, bscResult, solanaResult] = await Promise.allSettled([
+      fetchEthereumBalance(ethereumAddress),
+      fetchEvmBalance(bscRpcConfig, ethereumAddress),
+      solanaAddress ? fetchSolanaBalance(solanaAddress) : Promise.resolve(0n),
+    ]);
+    const failedNetworks: string[] = [];
+    const nextBalances = getDefaultAssetBalances().map((asset) => {
+      if (asset.id === "ethereum") {
+        if (ethereumResult.status === "fulfilled") {
+          return { ...asset, balance: formatWeiToEth(ethereumResult.value) };
+        }
+        failedNetworks.push("Ethereum");
+      }
+
+      if (asset.id === "bsc") {
+        if (bscResult.status === "fulfilled") {
+          return { ...asset, balance: formatWeiToEth(bscResult.value) };
+        }
+        failedNetworks.push("BSC");
+      }
+
+      if (asset.id === "solana") {
+        if (solanaResult.status === "fulfilled") {
+          return {
+            ...asset,
+            balance: formatLamportsToSol(solanaResult.value),
+          };
+        }
+        failedNetworks.push("Solana");
+      }
+
+      return asset;
+    });
+
+    setAssetBalances(nextBalances);
+    setBalanceStatus(failedNetworks.length ? "failed" : "ready");
+    setBalanceMessage(
+      failedNetworks.length
+        ? `${failedNetworks.join("、")} 余额暂时查询失败，已按 0 显示；BTC 和 TRON 余额 API 后续接入。`
+        : "Ethereum、BSC 和 Solana 主网余额已更新；BTC 和 TRON 暂时默认显示 0。",
+    );
   }
 
   async function handleCreatePasskeyWallet() {
@@ -925,7 +1035,7 @@ function App() {
           userId,
         }),
       );
-      const addresses = await deriveWalletAddresses(
+      const addresses = deriveWalletAddresses(
         keystoreJson,
         prfKeyBytes,
       );
@@ -939,7 +1049,7 @@ function App() {
         keystoreJson,
         prfSaltHex: bytesToHex(prfSalt),
         rpId,
-        tonAddress: addresses.tonAddress,
+        solanaAddress: addresses.solanaAddress,
         tronAddress: addresses.tronAddress,
         userId,
         version: 2,
@@ -947,14 +1057,14 @@ function App() {
 
       setEthereumAddress(addresses.ethereumAddress);
       setBitcoinAddress(addresses.bitcoinAddress);
+      setSolanaAddress(addresses.solanaAddress);
       setTronAddress(addresses.tronAddress);
-      setTonAddress(addresses.tonAddress);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
       navigateToView(getViewFromPath(window.location.pathname));
       setWalletStatus("created");
       setWalletMessage(
-        "Ethereum、BSC、Bitcoin、TON 和 TRON 主网地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
+        "Ethereum、BSC、Bitcoin、Solana 和 TRON 主网地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
       );
     } catch (error) {
       setWalletStatus("failed");
@@ -989,7 +1099,7 @@ function App() {
         base64UrlToArrayBuffer(storedWallet.credentialRawId),
         hexToBytes(storedWallet.prfSaltHex),
       );
-      const addresses = await deriveWalletAddresses(
+      const addresses = deriveWalletAddresses(
         storedWallet.keystoreJson,
         prfKeyBytes,
       );
@@ -998,14 +1108,14 @@ function App() {
         ...storedWallet,
         bitcoinAddress: addresses.bitcoinAddress,
         ethereumAddress: addresses.ethereumAddress,
-        tonAddress: addresses.tonAddress,
+        solanaAddress: addresses.solanaAddress,
         tronAddress: addresses.tronAddress,
       });
 
       setEthereumAddress(addresses.ethereumAddress);
       setBitcoinAddress(addresses.bitcoinAddress);
+      setSolanaAddress(addresses.solanaAddress);
       setTronAddress(addresses.tronAddress);
-      setTonAddress(addresses.tonAddress);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
       navigateToView(getViewFromPath(window.location.pathname));
@@ -1116,7 +1226,7 @@ function App() {
       setSentTxHash(hash || signed.txHash);
       setSendStatus("sent");
       setSendMessage("交易已广播。可以在 Etherscan 查看状态。");
-      void refreshBalance();
+      void refreshBalances();
     } catch (error) {
       setSendStatus("failed");
       setSendMessage(
@@ -1148,20 +1258,12 @@ function App() {
         base64UrlToArrayBuffer(storedWallet.credentialRawId),
         hexToBytes(storedWallet.prfSaltHex),
       );
-      const result = JSON.parse(
-        export_mnemonic(
-          JSON.stringify({
-            key: bytesToHex(prfKeyBytes),
-            keystoreJson: storedWallet.keystoreJson,
-          }),
-        ),
-      ) as ExportedMnemonic;
+      const mnemonic = exportWalletMnemonic(
+        storedWallet.keystoreJson,
+        bytesToHex(prfKeyBytes),
+      );
 
-      if (!result.mnemonic) {
-        throw new Error("Token Core 没有返回助记词。");
-      }
-
-      setExportedMnemonic(result.mnemonic);
+      setExportedMnemonic(mnemonic);
       setMnemonicExportStatus("revealed");
       setMnemonicExportMessage(
         "助记词已临时显示在页面上。请只手抄到纸上，完成后点击隐藏。",
@@ -1256,7 +1358,6 @@ function App() {
     );
   }
 
-  const balanceText = balanceWei === null ? "0" : formatWeiToEth(balanceWei);
   const receiveAddress =
     selectedReceiveNetwork.address || `${selectedReceiveNetwork.name} 地址后续接入`;
   const viewTitle: Record<AppView, string> = {
@@ -1332,15 +1433,44 @@ function App() {
         {currentView === "dashboard" ? (
           <section className="content-grid" aria-label="钱包概览">
             <article className="panel balance-panel">
-              <div className="panel-label">Ethereum ETH Balance</div>
-              <div className="balance">{balanceText} ETH</div>
+              <div className="panel-header">
+                <div>
+                  <div className="panel-label">Mainnet Balances</div>
+                  <h2>Native Assets</h2>
+                </div>
+                <span className={`pill ${balanceStatus}`}>
+                  {balanceStatus === "loading"
+                    ? "Loading"
+                    : balanceStatus === "ready"
+                      ? "Updated"
+                      : balanceStatus === "failed"
+                        ? "Partial"
+                        : "Waiting"}
+                </span>
+              </div>
+              <div className="asset-list compact">
+                {assetBalances.map((asset) => (
+                  <div className="asset-row" key={asset.id}>
+                    <div className="network-avatar" aria-hidden="true">
+                      {asset.symbol.slice(0, 1)}
+                    </div>
+                    <div>
+                      <div className="network-name">{asset.symbol}</div>
+                      <div className="network-status">{asset.name} 主网原生币</div>
+                    </div>
+                    <strong>
+                      {asset.balance} {asset.symbol}
+                    </strong>
+                  </div>
+                ))}
+              </div>
               <p className="muted-text">{balanceMessage}</p>
               <button
                 className="secondary-button compact"
-                onClick={refreshBalance}
+                onClick={refreshBalances}
                 type="button"
               >
-                Refresh Balance
+                Refresh Balances
               </button>
             </article>
 
@@ -1535,25 +1665,29 @@ function App() {
                         : "Waiting"}
                 </span>
               </div>
-              <div className="asset-row">
-                <div className="network-avatar" aria-hidden="true">
-                  E
-                </div>
-                <div>
-                  <div className="network-name">ETH</div>
-                  <div className="network-status">
-                    Ethereum 主网原生币
+              <div className="asset-list compact">
+                {assetBalances.map((asset) => (
+                  <div className="asset-row" key={asset.id}>
+                    <div className="network-avatar" aria-hidden="true">
+                      {asset.symbol.slice(0, 1)}
+                    </div>
+                    <div>
+                      <div className="network-name">{asset.symbol}</div>
+                      <div className="network-status">{asset.name} 主网原生币</div>
+                    </div>
+                    <strong>
+                      {asset.balance} {asset.symbol}
+                    </strong>
                   </div>
-                </div>
-                <strong>{balanceText} ETH</strong>
+                ))}
               </div>
               <p className="muted-text">{balanceMessage}</p>
               <button
                 className="secondary-button compact"
-                onClick={refreshBalance}
+                onClick={refreshBalances}
                 type="button"
               >
-                Refresh Balance
+                Refresh Balances
               </button>
             </article>
           </section>

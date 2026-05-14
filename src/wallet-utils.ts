@@ -3,7 +3,12 @@ const weiBase = 10n ** BigInt(ethDecimals);
 const appBasePath = "/MyWallet";
 
 export type WalletView = "dashboard" | "portfolio" | "receive" | "send" | "settings";
-export type ReceiveNetworkId = "ethereum" | "bsc" | "bitcoin" | "tron" | "ton";
+export type ReceiveNetworkId =
+  | "ethereum"
+  | "bsc"
+  | "bitcoin"
+  | "solana"
+  | "tron";
 
 export type ReceiveNetwork = {
   id: ReceiveNetworkId;
@@ -18,9 +23,26 @@ export type ReceiveNetwork = {
 export type ReceiveAddresses = {
   bitcoinAddress: string;
   ethereumAddress: string;
-  tonAddress: string;
+  solanaAddress: string;
   tronAddress: string;
 };
+
+export type AssetBalance = {
+  id: ReceiveNetworkId;
+  name: string;
+  symbol: string;
+  balance: string;
+};
+
+export function getDefaultAssetBalances(): AssetBalance[] {
+  return [
+    { balance: "0", id: "ethereum", name: "Ethereum", symbol: "ETH" },
+    { balance: "0", id: "bsc", name: "BSC", symbol: "BNB" },
+    { balance: "0", id: "bitcoin", name: "Bitcoin", symbol: "BTC" },
+    { balance: "0", id: "solana", name: "Solana", symbol: "SOL" },
+    { balance: "0", id: "tron", name: "TRON", symbol: "TRX" },
+  ];
+}
 
 export function getMnemonicBackupWarnings() {
   return [
@@ -35,6 +57,19 @@ export function getMnemonicBackupWarnings() {
 export function formatWeiToEth(wei: bigint) {
   const whole = wei / weiBase;
   const fraction = (wei % weiBase).toString().padStart(ethDecimals, "0");
+  const trimmedFraction = fraction.slice(0, 6).replace(/0+$/, "");
+
+  if (!trimmedFraction) {
+    return whole.toString();
+  }
+
+  return `${whole.toString()}.${trimmedFraction}`;
+}
+
+export function formatLamportsToSol(lamports: bigint) {
+  const solBase = 1_000_000_000n;
+  const whole = lamports / solBase;
+  const fraction = (lamports % solBase).toString().padStart(9, "0");
   const trimmedFraction = fraction.slice(0, 6).replace(/0+$/, "");
 
   if (!trimmedFraction) {
@@ -120,7 +155,7 @@ export function getPathForView(view: WalletView) {
 export function buildReceiveNetworks({
   bitcoinAddress,
   ethereumAddress,
-  tonAddress,
+  solanaAddress,
   tronAddress,
 }: ReceiveAddresses): ReceiveNetwork[] {
   return [
@@ -155,14 +190,14 @@ export function buildReceiveNetworks({
         "只发送 Bitcoin 主网 BTC 到这个地址。不要把其他网络 BTC 或其他资产转入。",
     },
     {
-      address: tonAddress,
-      assetName: "TON",
-      badge: "T",
-      id: "ton",
-      name: "TON",
-      note: "TON 使用 TON 专用库从 Passkey 加密材料派生主网地址。",
+      address: solanaAddress,
+      assetName: "SOL",
+      badge: "S",
+      id: "solana",
+      name: "Solana",
+      note: "Solana 使用助记词按 Solana 路径派生出的主网地址。",
       warning:
-        "只发送 TON 主网 TON 到这个地址。不要把其他网络资产转入。",
+        "只发送 Solana 主网 SOL 到这个地址。不要把其他网络资产转入。",
     },
     {
       address: tronAddress,

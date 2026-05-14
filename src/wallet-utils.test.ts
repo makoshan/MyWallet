@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildReceiveNetworks,
+  formatLamportsToSol,
   formatWeiToEth,
+  getDefaultAssetBalances,
   getMnemonicBackupWarnings,
   getPathForView,
   getViewFromPath,
@@ -16,6 +18,12 @@ describe("wallet utils", () => {
     expect(formatWeiToEth(0n)).toBe("0");
     expect(formatWeiToEth(1_000_000_000_000_000_000n)).toBe("1");
     expect(formatWeiToEth(1_234_567_890_000_000_000n)).toBe("1.234567");
+  });
+
+  it("formats lamports as a readable SOL amount", () => {
+    expect(formatLamportsToSol(0n)).toBe("0");
+    expect(formatLamportsToSol(1_000_000_000n)).toBe("1");
+    expect(formatLamportsToSol(1_234_567_890n)).toBe("1.234567");
   });
 
   it("parses ETH amount text into wei", () => {
@@ -52,15 +60,15 @@ describe("wallet utils", () => {
     expect(getPathForView("dashboard")).toBe("/MyWallet/");
   });
 
-  it("builds receive network options with mainnet EVM, BTC, TRON and TON addresses", () => {
+  it("builds receive network options with mainnet EVM, BTC, Solana and TRON addresses", () => {
     const ethereumAddress = "0x4533c05fCB9d719327016e5029d985aB6a7275BB";
     const bitcoinAddress = "bc1q7j6f7m9q2sx8d2c0z6v5zn7l2skq9mfd0rw9z8";
+    const solanaAddress = "7iUP2xPy1Gzgbgbp9MpBuXAbE7xFaMRZGXtXH3wmv9Y8";
     const tronAddress = "TJ83hu2gvY93FGhgDt9Ws5FB7TrhDYy3XG";
-    const tonAddress = "UQDcB_cHx9Yfwv4b4sLcW2tRg4HNjZJLqjr0TBKCL2-7NWvQ";
     const networks = buildReceiveNetworks({
       bitcoinAddress,
       ethereumAddress,
-      tonAddress,
+      solanaAddress,
       tronAddress,
     });
 
@@ -68,15 +76,28 @@ describe("wallet utils", () => {
       "ethereum",
       "bsc",
       "bitcoin",
-      "ton",
+      "solana",
       "tron",
     ]);
     expect(networks[0].address).toBe(ethereumAddress);
     expect(networks[1].address).toBe(ethereumAddress);
     expect(networks[2].address).toBe(bitcoinAddress);
-    expect(networks[3].address).toBe(tonAddress);
+    expect(networks[3].address).toBe(solanaAddress);
     expect(networks[4].address).toBe(tronAddress);
     expect(networks.every((network) => !network.name.includes("Testnet"))).toBe(
+      true,
+    );
+  });
+
+  it("defaults all mainnet asset balances to zero", () => {
+    expect(getDefaultAssetBalances().map((asset) => asset.symbol)).toEqual([
+      "ETH",
+      "BNB",
+      "BTC",
+      "SOL",
+      "TRX",
+    ]);
+    expect(getDefaultAssetBalances().every((asset) => asset.balance === "0")).toBe(
       true,
     );
   });

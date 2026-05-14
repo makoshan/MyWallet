@@ -12,10 +12,11 @@
   },
   "dependencies": {
     "@consenlabs/tcx-wasm": "^0.9.1",
-    "@ton/crypto": "^3.3.0",
-    "@ton/ton": "^16.2.4",
+    "@solana/web3.js": "^1.98.4",
     "@types/qrcode": "^1.5.6",
+    "bip39": "^3.1.0",
     "buffer": "^6.0.3",
+    "ed25519-hd-key": "^2.0.0",
     "lucide-react": "^1.14.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.3",
