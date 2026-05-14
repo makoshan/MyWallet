@@ -586,6 +586,14 @@ h2 {
   font-weight: 700;
 }
 
+.token-logo {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
 .network-name {
   font-weight: 700;
 }

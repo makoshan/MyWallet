@@ -36,6 +36,8 @@ import {
 } from "./wallet-utils";
 import "./styles.css";
 
+const assetBaseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
+const tokenLogoBaseUrl = `${assetBaseUrl}/token-logos`;
 const navItems = [
   { label: "Dashboard", view: "dashboard" },
   { label: "Deposit Funds", view: "receive" },
@@ -61,6 +63,10 @@ const tronRpcUrl =
   import.meta.env.VITE_TRON_RPC_URL ||
   "https://api.trongrid.io";
 const ethereumExplorerBaseUrl = "https://etherscan.io";
+
+function getTokenLogoSrc(logoFile: string) {
+  return `${tokenLogoBaseUrl}/${logoFile}`;
+}
 
 type PasskeySupport = "checking" | "supported" | "unsupported";
 type WasmStatus = "loading" | "ready" | "failed";
@@ -1448,7 +1454,11 @@ function App() {
                 {assetBalances.map((asset) => (
                   <div className="asset-row" key={asset.id}>
                     <div className="network-avatar" aria-hidden="true">
-                      {asset.symbol.slice(0, 1)}
+                      <img
+                        alt=""
+                        className="token-logo"
+                        src={getTokenLogoSrc(asset.logoFile)}
+                      />
                     </div>
                     <div>
                       <div className="network-name">{asset.symbol}</div>
@@ -1502,7 +1512,11 @@ function App() {
                 type="button"
               >
                 <div className="network-avatar" aria-hidden="true">
-                  {selectedReceiveNetwork.badge}
+                  <img
+                    alt=""
+                    className="token-logo"
+                    src={getTokenLogoSrc(selectedReceiveNetwork.logoFile)}
+                  />
                 </div>
                 <strong>{selectedReceiveNetwork.name}</strong>
                 <span aria-hidden="true">⌄</span>
@@ -1525,7 +1539,11 @@ function App() {
                       type="button"
                     >
                       <div className="network-avatar" aria-hidden="true">
-                        {network.badge}
+                        <img
+                          alt=""
+                          className="token-logo"
+                          src={getTokenLogoSrc(network.logoFile)}
+                        />
                       </div>
                       <div>
                         <strong>{network.name}</strong>

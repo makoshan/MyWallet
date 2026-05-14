@@ -16,6 +16,7 @@ export type ReceiveNetwork = {
   assetName: string;
   address: string;
   badge: string;
+  logoFile: string;
   note: string;
   warning: string;
 };
@@ -32,15 +33,46 @@ export type AssetBalance = {
   name: string;
   symbol: string;
   balance: string;
+  logoFile: string;
 };
 
 export function getDefaultAssetBalances(): AssetBalance[] {
   return [
-    { balance: "0", id: "ethereum", name: "Ethereum", symbol: "ETH" },
-    { balance: "0", id: "bsc", name: "BSC", symbol: "BNB" },
-    { balance: "0", id: "bitcoin", name: "Bitcoin", symbol: "BTC" },
-    { balance: "0", id: "solana", name: "Solana", symbol: "SOL" },
-    { balance: "0", id: "tron", name: "TRON", symbol: "TRX" },
+    {
+      balance: "0",
+      id: "ethereum",
+      logoFile: "ethereum.png",
+      name: "Ethereum",
+      symbol: "ETH",
+    },
+    {
+      balance: "0",
+      id: "bsc",
+      logoFile: "bnb.svg",
+      name: "BSC",
+      symbol: "BNB",
+    },
+    {
+      balance: "0",
+      id: "bitcoin",
+      logoFile: "bitcoin.png",
+      name: "Bitcoin",
+      symbol: "BTC",
+    },
+    {
+      balance: "0",
+      id: "solana",
+      logoFile: "solana.svg",
+      name: "Solana",
+      symbol: "SOL",
+    },
+    {
+      balance: "0",
+      id: "tron",
+      logoFile: "tron.png",
+      name: "TRON",
+      symbol: "TRX",
+    },
   ];
 }
 
@@ -173,6 +205,7 @@ export function buildReceiveNetworks({
       assetName: "ETH",
       badge: "E",
       id: "ethereum",
+      logoFile: "ethereum.png",
       name: "Ethereum",
       note: "Ethereum 使用当前钱包的 EVM 主网地址。",
       warning:
@@ -183,6 +216,7 @@ export function buildReceiveNetworks({
       assetName: "BNB",
       badge: "B",
       id: "bsc",
+      logoFile: "bnb.svg",
       name: "BSC",
       note: "BSC 与 Ethereum 使用同一个 EVM 地址，但网络不同。",
       warning:
@@ -193,6 +227,7 @@ export function buildReceiveNetworks({
       assetName: "BTC",
       badge: "B",
       id: "bitcoin",
+      logoFile: "bitcoin.png",
       name: "Bitcoin",
       note: "Bitcoin 使用 Native SegWit 主网地址，地址通常以 bc1q 开头。",
       warning:
@@ -203,6 +238,7 @@ export function buildReceiveNetworks({
       assetName: "SOL",
       badge: "S",
       id: "solana",
+      logoFile: "solana.svg",
       name: "Solana",
       note: "Solana 使用助记词按 Solana 路径派生出的主网地址。",
       warning:
@@ -213,6 +249,7 @@ export function buildReceiveNetworks({
       assetName: "TRX",
       badge: "T",
       id: "tron",
+      logoFile: "tron.png",
       name: "TRON",
       note: "TRON 使用 Token Core 按 TRON 路径派生出的主网地址。",
       warning:

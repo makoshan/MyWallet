@@ -98,16 +98,34 @@ describe("wallet utils", () => {
   });
 
   it("defaults all mainnet asset balances to zero", () => {
-    expect(getDefaultAssetBalances().map((asset) => asset.symbol)).toEqual([
+    const defaultBalances = getDefaultAssetBalances();
+
+    expect(defaultBalances.map((asset) => asset.symbol)).toEqual([
       "ETH",
       "BNB",
       "BTC",
       "SOL",
       "TRX",
     ]);
-    expect(getDefaultAssetBalances().every((asset) => asset.balance === "0")).toBe(
-      true,
-    );
+    expect(defaultBalances.every((asset) => asset.balance === "0")).toBe(true);
+    expect(defaultBalances.every((asset) => asset.logoFile)).toBe(true);
+  });
+
+  it("adds token logos to receive network options", () => {
+    const networks = buildReceiveNetworks({
+      bitcoinAddress: "bc1q7j6f7m9q2sx8d2c0z6v5zn7l2skq9mfd0rw9z8",
+      ethereumAddress: "0x4533c05fCB9d719327016e5029d985aB6a7275BB",
+      solanaAddress: "7iUP2xPy1Gzgbgbp9MpBuXAbE7xFaMRZGXtXH3wmv9Y8",
+      tronAddress: "TJ83hu2gvY93FGhgDt9Ws5FB7TrhDYy3XG",
+    });
+
+    expect(networks.map((network) => network.logoFile)).toEqual([
+      "ethereum.png",
+      "bnb.svg",
+      "bitcoin.png",
+      "solana.svg",
+      "tron.png",
+    ]);
   });
 
   it("keeps mnemonic backup warnings explicit and offline-only", () => {
