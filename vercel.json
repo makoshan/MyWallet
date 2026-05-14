@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/MyWallet/:path*",
+      "destination": "/:path*",
+      "permanent": false
+    }
+  ]
+}

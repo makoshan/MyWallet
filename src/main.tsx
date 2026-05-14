@@ -38,6 +38,7 @@ import {
 import "./styles.css";
 
 const assetBaseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
+const appBasePath = assetBaseUrl;
 const tokenLogoBaseUrl = `${assetBaseUrl}/token-logos`;
 const navItems = [
   { label: "Dashboard", view: "dashboard" },
@@ -671,7 +672,7 @@ function App() {
   const [hasStoredWallet, setHasStoredWallet] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState<AppView>(() =>
-    getViewFromPath(window.location.pathname),
+    getViewFromPath(window.location.pathname, appBasePath),
   );
   const [ethereumAddress, setEthereumAddress] = useState("");
   const [bitcoinAddress, setBitcoinAddress] = useState("");
@@ -861,7 +862,7 @@ function App() {
 
   useEffect(() => {
     function handlePopState() {
-      setCurrentView(getViewFromPath(window.location.pathname));
+      setCurrentView(getViewFromPath(window.location.pathname, appBasePath));
     }
 
     window.addEventListener("popstate", handlePopState);
@@ -884,7 +885,7 @@ function App() {
 
   function navigateToView(view: AppView) {
     setCurrentView(view);
-    const nextPath = getPathForView(view);
+    const nextPath = getPathForView(view, appBasePath);
 
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
@@ -1064,7 +1065,7 @@ function App() {
       setTronAddress(addresses.tronAddress);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
-      navigateToView(getViewFromPath(window.location.pathname));
+      navigateToView(getViewFromPath(window.location.pathname, appBasePath));
       setWalletStatus("created");
       setWalletMessage(
         "Ethereum、BSC、Bitcoin、Solana 和 TRON 主网地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
@@ -1121,7 +1122,7 @@ function App() {
       setTronAddress(addresses.tronAddress);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
-      navigateToView(getViewFromPath(window.location.pathname));
+      navigateToView(getViewFromPath(window.location.pathname, appBasePath));
       setWalletStatus("created");
       setWalletMessage("Passkey 解锁成功，五链主网地址已恢复。");
     } catch (error) {

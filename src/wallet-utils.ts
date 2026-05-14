@@ -1,6 +1,5 @@
 const ethDecimals = 18;
 const weiBase = 10n ** BigInt(ethDecimals);
-const appBasePath = "/MyWallet";
 
 export type WalletView = "dashboard" | "receive" | "send" | "settings";
 export type ReceiveNetworkId =
@@ -199,7 +198,7 @@ export function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
 }
 
-export function getViewFromPath(pathname: string): WalletView {
+export function getViewFromPath(pathname: string, appBasePath = ""): WalletView {
   const normalizedPath = pathname.replace(/\/+$/, "");
   const route = normalizedPath.startsWith(appBasePath)
     ? normalizedPath.slice(appBasePath.length)
@@ -220,9 +219,9 @@ export function getViewFromPath(pathname: string): WalletView {
   return "dashboard";
 }
 
-export function getPathForView(view: WalletView) {
+export function getPathForView(view: WalletView, appBasePath = "") {
   if (view === "dashboard") {
-    return `${appBasePath}/`;
+    return appBasePath ? `${appBasePath}/` : "/";
   }
 
   return `${appBasePath}/${view}`;

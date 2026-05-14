@@ -58,15 +58,19 @@ describe("wallet utils", () => {
   });
 
   it("maps receive route to receive view", () => {
-    expect(getViewFromPath("/MyWallet/receive")).toBe("receive");
-    expect(getViewFromPath("/MyWallet/")).toBe("dashboard");
-    expect(getViewFromPath("/MyWallet/portfolio")).toBe("dashboard");
-    expect(getViewFromPath("/MyWallet/unknown")).toBe("dashboard");
+    expect(getViewFromPath("/receive")).toBe("receive");
+    expect(getViewFromPath("/")).toBe("dashboard");
+    expect(getViewFromPath("/portfolio")).toBe("dashboard");
+    expect(getViewFromPath("/unknown")).toBe("dashboard");
+    expect(getViewFromPath("/MyWallet/receive", "/MyWallet")).toBe("receive");
+    expect(getViewFromPath("/MyWallet/", "/MyWallet")).toBe("dashboard");
   });
 
-  it("builds GitHub Pages paths for wallet views", () => {
-    expect(getPathForView("receive")).toBe("/MyWallet/receive");
-    expect(getPathForView("dashboard")).toBe("/MyWallet/");
+  it("builds paths for wallet views from the active base path", () => {
+    expect(getPathForView("receive")).toBe("/receive");
+    expect(getPathForView("dashboard")).toBe("/");
+    expect(getPathForView("receive", "/MyWallet")).toBe("/MyWallet/receive");
+    expect(getPathForView("dashboard", "/MyWallet")).toBe("/MyWallet/");
   });
 
   it("builds receive network options with mainnet EVM, BTC, Solana and TRON addresses", () => {
