@@ -29,6 +29,7 @@ const navItems = [
 ] as const;
 const walletStorageKey = "mywallet.passkeyWallet.v1";
 const sepoliaChainId = "11155111";
+const sepoliaChainIdHex = "0xaa36a7";
 const ethereumDerivationPath = "m/44'/60'/0'/0/0";
 const sepoliaRpcUrl =
   import.meta.env.VITE_SEPOLIA_RPC_URL ??
@@ -308,7 +309,15 @@ function bigintToQuantity(value: bigint) {
   return `0x${value.toString(16)}`;
 }
 
-async function callSepoliaRpc<T>(method: string, params: unknown[]) {
+async function callSepoliaRpc<T>(
+  method: string,
+  params: unknown[],
+  options: { skipNetworkCheck?: boolean } = {},
+) {
+  if (!options.skipNetworkCheck && method !== "eth_chainId") {
+    await ensureSepoliaRpcNetwork();
+  }
+
   const response = await fetch(sepoliaRpcUrl, {
     body: JSON.stringify({
       id: Date.now(),
@@ -340,6 +349,22 @@ async function callSepoliaRpc<T>(method: string, params: unknown[]) {
   }
 
   return data.result;
+}
+
+let sepoliaRpcNetworkCheck: Promise<void> | null = null;
+
+async function ensureSepoliaRpcNetwork() {
+  sepoliaRpcNetworkCheck ??= callSepoliaRpc<string>("eth_chainId", [], {
+    skipNetworkCheck: true,
+  }).then((chainId) => {
+    if (chainId.toLowerCase() !== sepoliaChainIdHex) {
+      throw new Error(
+        "当前 RPC 不是 Ethereum Sepolia。请检查 VITE_SEPOLIA_RPC_URL，不要使用 Ethereum Mainnet RPC。",
+      );
+    }
+  });
+
+  return sepoliaRpcNetworkCheck;
 }
 
 async function fetchSepoliaBalance(address: string) {
