@@ -3,7 +3,7 @@ const weiBase = 10n ** BigInt(ethDecimals);
 const appBasePath = "/MyWallet";
 
 export type WalletView = "dashboard" | "portfolio" | "receive" | "send" | "settings";
-export type ReceiveNetworkId = "ethereum" | "bsc" | "tron" | "solana";
+export type ReceiveNetworkId = "ethereum" | "bsc" | "tron" | "ton";
 
 export type ReceiveNetwork = {
   id: ReceiveNetworkId;
@@ -17,7 +17,7 @@ export type ReceiveNetwork = {
 
 export type ReceiveAddresses = {
   ethereumAddress: string;
-  solanaAddress: string;
+  tonAddress: string;
   tronAddress: string;
 };
 
@@ -108,7 +108,7 @@ export function getPathForView(view: WalletView) {
 
 export function buildReceiveNetworks({
   ethereumAddress,
-  solanaAddress,
+  tonAddress,
   tronAddress,
 }: ReceiveAddresses): ReceiveNetwork[] {
   return [
@@ -143,14 +143,14 @@ export function buildReceiveNetworks({
         "只发送 TRON 测试网 TRX 到这个地址。不要把主网 TRX 或其他网络资产转入。",
     },
     {
-      address: solanaAddress,
-      assetName: "Solana Devnet SOL",
-      badge: "S",
-      id: "solana",
-      name: "Solana Devnet",
-      note: "Solana Devnet 使用前端 Solana 专用库从 Passkey 加密材料派生地址。",
+      address: tonAddress,
+      assetName: "TON Testnet TON",
+      badge: "T",
+      id: "ton",
+      name: "TON Testnet",
+      note: "TON Testnet 使用 TON 专用库从 Passkey 加密材料派生测试网地址。",
       warning:
-        "只发送 Solana Devnet SOL 到这个地址。不要把主网 SOL 或其他网络资产转入。",
+        "只发送 TON Testnet TON 到这个地址。不要把主网 TON 或其他网络资产转入。",
     },
   ];
 }
