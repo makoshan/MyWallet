@@ -51,9 +51,15 @@ describe("wallet utils", () => {
     expect(getPathForView("dashboard")).toBe("/MyWallet/");
   });
 
-  it("builds receive network options without fake non-EVM addresses", () => {
-    const address = "0x4533c05fCB9d719327016e5029d985aB6a7275BB";
-    const networks = buildReceiveNetworks(address);
+  it("builds receive network options with EVM, TRON and Solana addresses", () => {
+    const ethereumAddress = "0x4533c05fCB9d719327016e5029d985aB6a7275BB";
+    const tronAddress = "TJ83hu2gvY93FGhgDt9Ws5FB7TrhDYy3XG";
+    const solanaAddress = "7iUP2xPy1Gzgbgbp9MpBuXAbE7xFaMRZGXtXH3wmv9Y8";
+    const networks = buildReceiveNetworks({
+      ethereumAddress,
+      solanaAddress,
+      tronAddress,
+    });
 
     expect(networks.map((network) => network.id)).toEqual([
       "ethereum",
@@ -61,9 +67,9 @@ describe("wallet utils", () => {
       "tron",
       "solana",
     ]);
-    expect(networks[0].address).toBe(address);
-    expect(networks[1].address).toBe(address);
-    expect(networks[2].address).toBe("");
-    expect(networks[3].address).toBe("");
+    expect(networks[0].address).toBe(ethereumAddress);
+    expect(networks[1].address).toBe(ethereumAddress);
+    expect(networks[2].address).toBe(tronAddress);
+    expect(networks[3].address).toBe(solanaAddress);
   });
 });

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import { createRoot } from "react-dom/client";
+import { Keypair } from "@solana/web3.js";
 import {
   buildReceiveNetworks,
   formatWeiToEth,
@@ -36,23 +37,41 @@ const walletStorageKey = "mywallet.passkeyWallet.v1";
 const sepoliaChainId = "11155111";
 const sepoliaChainIdHex = "0xaa36a7";
 const ethereumDerivationPath = "m/44'/60'/0'/0/0";
+const tronDerivationPath = "m/44'/195'/0'/0/0";
+const solanaDerivationLabel = "MyWallet Solana Devnet v1 m/44'/501'/0'/0'";
 const sepoliaRpcUrl =
   import.meta.env.VITE_SEPOLIA_RPC_URL ??
   "https://ethereum-sepolia-rpc.publicnode.com";
 const sepoliaExplorerBaseUrl = "https://sepolia.etherscan.io";
 const sepoliaFaucetUrl = "https://sepolia-faucet.pk910.de/";
 
-function getNetworks(ethereumAddress: string) {
+function getNetworks(
+  ethereumAddress: string,
+  tronAddress: string,
+  solanaAddress: string,
+) {
   return [
     {
       name: "Ethereum Sepolia",
       status: ethereumAddress ? "地址已生成" : "等待创建",
       badge: ethereumAddress ? "Connected" : "Not connected",
     },
-    { name: "BSC Testnet", status: "后续接入", badge: "Not connected" },
+    {
+      name: "BSC Testnet",
+      status: ethereumAddress ? "复用 EVM 地址" : "等待创建",
+      badge: ethereumAddress ? "Connected" : "Not connected",
+    },
     { name: "Bitcoin Testnet", status: "后续接入", badge: "Not connected" },
-    { name: "Solana Devnet", status: "后续接入", badge: "Not connected" },
-    { name: "TRON Testnet", status: "后续接入", badge: "Not connected" },
+    {
+      name: "Solana Devnet",
+      status: solanaAddress ? "地址已生成" : "等待创建",
+      badge: solanaAddress ? "Connected" : "Not connected",
+    },
+    {
+      name: "TRON Testnet",
+      status: tronAddress ? "地址已生成" : "等待创建",
+      badge: tronAddress ? "Connected" : "Not connected",
+    },
   ];
 }
 
@@ -78,6 +97,8 @@ type StoredWallet = {
   rpId: string;
   prfSaltHex: string;
   ethereumSepoliaAddress: string;
+  solanaDevnetAddress?: string;
+  tronTestnetAddress?: string;
   createdAt: string;
 };
 
@@ -97,6 +118,7 @@ type SignedEthTransaction = {
 
 type DerivedAccount = {
   address?: string;
+  chain?: string;
 };
 
 type PrfExtensionResults = {
@@ -265,7 +287,16 @@ async function createPasskeyCredential(userIdBytes: Uint8Array<ArrayBuffer>) {
   return credential;
 }
 
-function deriveEthereumSepoliaAddress(keystoreJson: string, prfKeyHex: string) {
+type DerivedWalletAddresses = {
+  ethereumAddress: string;
+  solanaAddress: string;
+  tronAddress: string;
+};
+
+function deriveTokenCoreTestnetAddresses(
+  keystoreJson: string,
+  prfKeyHex: string,
+) {
   const accounts = JSON.parse(
     derive_accounts(
       JSON.stringify({
@@ -276,6 +307,11 @@ function deriveEthereumSepoliaAddress(keystoreJson: string, prfKeyHex: string) {
             derivationPath: ethereumDerivationPath,
             network: "TESTNET",
           },
+          {
+            chain: "TRON",
+            derivationPath: tronDerivationPath,
+            network: "TESTNET",
+          },
         ],
         key: prfKeyHex,
         keystoreJson,
@@ -283,13 +319,65 @@ function deriveEthereumSepoliaAddress(keystoreJson: string, prfKeyHex: string) {
     ),
   ) as DerivedAccount[];
 
-  const address = accounts[0]?.address;
+  const ethereumAddress =
+    accounts.find((account) => account.chain === "ETHEREUM")?.address ??
+    accounts[0]?.address;
+  const tronAddress =
+    accounts.find((account) => account.chain === "TRON")?.address ??
+    accounts[1]?.address;
 
-  if (!address) {
+  if (!ethereumAddress) {
     throw new Error("Token Core 没有返回 Ethereum Sepolia 地址。");
   }
 
-  return address;
+  if (!tronAddress) {
+    throw new Error("Token Core 没有返回 TRON Testnet 地址。");
+  }
+
+  return {
+    ethereumAddress,
+    tronAddress,
+  };
+}
+
+async function deriveSolanaDevnetAddress(prfKeyBytes: Uint8Array) {
+  const prfKeyCopy = new Uint8Array(new ArrayBuffer(prfKeyBytes.byteLength));
+  prfKeyCopy.set(prfKeyBytes);
+  const hmacKey = await crypto.subtle.importKey(
+    "raw",
+    prfKeyCopy,
+    {
+      hash: "SHA-256",
+      name: "HMAC",
+    },
+    false,
+    ["sign"],
+  );
+  const seedBuffer = await crypto.subtle.sign(
+    "HMAC",
+    hmacKey,
+    new TextEncoder().encode(solanaDerivationLabel),
+  );
+  const seed = new Uint8Array(seedBuffer).slice(0, 32);
+
+  return Keypair.fromSeed(seed).publicKey.toBase58();
+}
+
+async function deriveWalletAddresses(
+  keystoreJson: string,
+  prfKeyBytes: Uint8Array,
+): Promise<DerivedWalletAddresses> {
+  const prfKeyHex = bytesToHex(prfKeyBytes);
+  const tokenCoreAddresses = deriveTokenCoreTestnetAddresses(
+    keystoreJson,
+    prfKeyHex,
+  );
+  const solanaAddress = await deriveSolanaDevnetAddress(prfKeyBytes);
+
+  return {
+    ...tokenCoreAddresses,
+    solanaAddress,
+  };
 }
 
 function loadStoredWallet() {
@@ -469,6 +557,8 @@ function App() {
     getViewFromPath(window.location.pathname),
   );
   const [ethereumAddress, setEthereumAddress] = useState("");
+  const [tronAddress, setTronAddress] = useState("");
+  const [solanaAddress, setSolanaAddress] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
   const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
@@ -490,8 +580,12 @@ function App() {
   const [isReceiveNetworkMenuOpen, setIsReceiveNetworkMenuOpen] =
     useState(false);
 
-  const networks = getNetworks(ethereumAddress);
-  const receiveNetworks = buildReceiveNetworks(ethereumAddress);
+  const networks = getNetworks(ethereumAddress, tronAddress, solanaAddress);
+  const receiveNetworks = buildReceiveNetworks({
+    ethereumAddress,
+    solanaAddress,
+    tronAddress,
+  });
   const selectedReceiveNetwork =
     receiveNetworks.find((network) => network.id === selectedReceiveNetworkId) ??
     receiveNetworks[0];
@@ -684,6 +778,9 @@ function App() {
     setIsAuthenticated(false);
     navigateToView("dashboard");
     setEthereumAddress("");
+    setTronAddress("");
+    setSolanaAddress("");
+    setSelectedReceiveNetworkId("ethereum");
     setQrCodeUrl("");
     setCopyMessage("");
     setBalanceWei(null);
@@ -758,27 +855,34 @@ function App() {
           userId,
         }),
       );
-      const address = deriveEthereumSepoliaAddress(keystoreJson, prfKeyHex);
+      const addresses = await deriveWalletAddresses(
+        keystoreJson,
+        prfKeyBytes,
+      );
 
       saveStoredWallet({
         createdAt: new Date().toISOString(),
         credentialId: credential.id,
         credentialRawId: arrayBufferToBase64Url(credential.rawId),
-        ethereumSepoliaAddress: address,
+        ethereumSepoliaAddress: addresses.ethereumAddress,
         keystoreJson,
         prfSaltHex: bytesToHex(prfSalt),
         rpId,
+        solanaDevnetAddress: addresses.solanaAddress,
+        tronTestnetAddress: addresses.tronAddress,
         userId,
         version: 1,
       });
 
-      setEthereumAddress(address);
+      setEthereumAddress(addresses.ethereumAddress);
+      setTronAddress(addresses.tronAddress);
+      setSolanaAddress(addresses.solanaAddress);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
       navigateToView(getViewFromPath(window.location.pathname));
       setWalletStatus("created");
       setWalletMessage(
-        "Ethereum Sepolia 地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
+        "Ethereum Sepolia、TRON Testnet 和 Solana Devnet 地址已生成。助记词、私钥和 Passkey PRF 密钥都没有在页面显示。",
       );
     } catch (error) {
       setWalletStatus("failed");
@@ -813,17 +917,26 @@ function App() {
         base64UrlToArrayBuffer(storedWallet.credentialRawId),
         hexToBytes(storedWallet.prfSaltHex),
       );
-      const address = deriveEthereumSepoliaAddress(
+      const addresses = await deriveWalletAddresses(
         storedWallet.keystoreJson,
-        bytesToHex(prfKeyBytes),
+        prfKeyBytes,
       );
 
-      setEthereumAddress(address);
+      saveStoredWallet({
+        ...storedWallet,
+        ethereumSepoliaAddress: addresses.ethereumAddress,
+        solanaDevnetAddress: addresses.solanaAddress,
+        tronTestnetAddress: addresses.tronAddress,
+      });
+
+      setEthereumAddress(addresses.ethereumAddress);
+      setTronAddress(addresses.tronAddress);
+      setSolanaAddress(addresses.solanaAddress);
       setHasStoredWallet(true);
       setIsAuthenticated(true);
       navigateToView(getViewFromPath(window.location.pathname));
       setWalletStatus("created");
-      setWalletMessage("Passkey 解锁成功，Ethereum Sepolia 地址已恢复。");
+      setWalletMessage("Passkey 解锁成功，多链测试网地址已恢复。");
     } catch (error) {
       setWalletStatus("failed");
       setWalletMessage(

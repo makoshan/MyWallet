@@ -15,6 +15,12 @@ export type ReceiveNetwork = {
   warning: string;
 };
 
+export type ReceiveAddresses = {
+  ethereumAddress: string;
+  solanaAddress: string;
+  tronAddress: string;
+};
+
 export function formatWeiToEth(wei: bigint) {
   const whole = wei / weiBase;
   const fraction = (wei % weiBase).toString().padStart(ethDecimals, "0");
@@ -100,7 +106,11 @@ export function getPathForView(view: WalletView) {
   return `${appBasePath}/${view}`;
 }
 
-export function buildReceiveNetworks(ethereumAddress: string): ReceiveNetwork[] {
+export function buildReceiveNetworks({
+  ethereumAddress,
+  solanaAddress,
+  tronAddress,
+}: ReceiveAddresses): ReceiveNetwork[] {
   return [
     {
       address: ethereumAddress,
@@ -123,24 +133,24 @@ export function buildReceiveNetworks(ethereumAddress: string): ReceiveNetwork[] 
         "只发送 BSC Testnet BNB 到这个地址。不要把主网 BNB 或其他网络资产转入。",
     },
     {
-      address: "",
+      address: tronAddress,
       assetName: "TRON Testnet TRX",
       badge: "T",
       id: "tron",
       name: "TRON Testnet",
-      note: "TRON 地址会在第 12 步接入 Token Core 后显示。",
+      note: "TRON Testnet 使用 Token Core 按 TRON 路径派生出的测试网地址。",
       warning:
-        "TRON 测试网地址尚未生成，当前不要向这里转入 TRX。",
+        "只发送 TRON 测试网 TRX 到这个地址。不要把主网 TRX 或其他网络资产转入。",
     },
     {
-      address: "",
+      address: solanaAddress,
       assetName: "Solana Devnet SOL",
       badge: "S",
       id: "solana",
       name: "Solana Devnet",
-      note: "Solana Devnet 地址会在第 11 步接入 Solana 专用库后显示。",
+      note: "Solana Devnet 使用前端 Solana 专用库从 Passkey 加密材料派生地址。",
       warning:
-        "Solana Devnet 地址尚未生成，当前不要向这里转入 SOL。",
+        "只发送 Solana Devnet SOL 到这个地址。不要把主网 SOL 或其他网络资产转入。",
     },
   ];
 }
